@@ -18,8 +18,8 @@ import {
 } from "@/utils/engines";
 import { getBestMoves as lichessGetBestMoves } from "@/utils/lichess/api";
 import { useThrottledEffect } from "@/utils/misc";
-import { parseUci } from "chessops";
-import { INITIAL_FEN, makeFen } from "chessops/fen";
+import { parseUci } from "xiangqiops";
+import { INITIAL_FEN, makeFen } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { startTransition, useContext, useEffect, useMemo } from "react";
@@ -204,6 +204,7 @@ function EngineListener({
             extraOptions: options,
           }).then((moves) => {
             if (moves) {
+              alert(moves);
               const [progress, bestMoves] = moves;
               setEngineVariation((prev) => {
                 const newMap = new Map(prev);

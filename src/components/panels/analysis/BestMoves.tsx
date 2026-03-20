@@ -34,8 +34,8 @@ import {
   IconSettings,
   IconTargetArrow,
 } from "@tabler/icons-react";
-import { parseUci } from "chessops";
-import { INITIAL_FEN, makeFen } from "chessops/fen";
+import { parseUci } from "xiangqiops";
+import { INITIAL_FEN, makeFen } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo } from "react";
@@ -125,6 +125,7 @@ function BestMovesComponent({
   if (pos) {
     for (const uci of moves) {
       const move = parseUci(uci);
+      //alert(`${move.from},${move.to}`);
       if (!move) {
         console.log("Invalid move", uci);
         break;

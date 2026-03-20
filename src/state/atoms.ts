@@ -20,8 +20,8 @@ import type { OpponentSettings } from "@/components/boards/BoardGame";
 import { positionFromFen, swapMove } from "@/utils/chessops";
 import type { SuccessDatabaseInfo } from "@/utils/db";
 import { getWinChance, normalizeScore } from "@/utils/score";
-import { parseUci } from "chessops";
-import { INITIAL_FEN, makeFen } from "chessops/fen";
+import { parseUci } from "xiangqiops";
+import { INITIAL_FEN, makeFen } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { type PrimitiveAtom, atom } from "jotai";
 import {
@@ -175,7 +175,7 @@ export const soundVolumeAtom = atomWithStorage<number>(
 export const pieceSetAtom = atomWithStorage<string>("piece-set", "staunty");
 export const boardImageAtom = atomWithStorage<string>(
   "board-image",
-  "gray.svg",
+  "xiangqi.svg",
 );
 export const primaryColorAtom = atomWithStorage<MantineColor>(
   "mantine-primary-color",
@@ -436,6 +436,7 @@ export const bestMovesFamily = atomFamily(
         let finalFen = INITIAL_FEN;
         if (pos) {
           for (const move of gameMoves) {
+            //alert(`${move.from},${move.to}`);
             const m = parseUci(move);
             pos.play(m!);
           }

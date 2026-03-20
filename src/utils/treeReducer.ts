@@ -1,7 +1,7 @@
 import type { Outcome, Score } from "@/bindings";
-import type { DrawShape } from "chessground/draw";
-import type { Move } from "chessops";
-import { INITIAL_FEN } from "chessops/fen";
+import type { DrawShape } from "xiangqiground/draw";
+import type { Move } from "xiangqiops";
+import { INITIAL_FEN } from "xiangqiops/fen";
 import type { Annotation } from "./annotation";
 import { positionFromFen } from "./chessops";
 

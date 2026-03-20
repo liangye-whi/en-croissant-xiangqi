@@ -1,7 +1,15 @@
 import type { BestMoves, Outcome, Score } from "@/bindings";
 import { ANNOTATION_INFO, type Annotation } from "@/utils/annotation";
 import { getPGN } from "@/utils/chess";
-import { parseSanOrUci, positionFromFen } from "@/utils/chessops";
+import {
+  getXiangqiRepetitionDrawReason,
+  getXiangqiTerminalType,
+  getXiangqiWinner,
+  isXiangqiMaterialDraw,
+  normalizeFenForRepetition,
+  parseSanOrUci,
+  positionFromFen,
+} from "@/utils/chessops";
 import { isPrefix } from "@/utils/misc";
 import { getAnnotation } from "@/utils/score";
 import { playSound } from "@/utils/sound";
@@ -14,13 +22,18 @@ import {
   getNodeAtPath,
   treeIteratorMainLine,
 } from "@/utils/treeReducer";
-import type { DrawShape } from "chessground/draw";
-import { type Move, isNormal } from "chessops";
-import { INITIAL_FEN, makeFen } from "chessops/fen";
-import { makeSan, parseSan } from "chessops/san";
+import type { DrawShape } from "xiangqiground/draw";
+import type { Move } from "xiangqiops";
+import { makeFen } from "xiangqiops/fen";
+import { makeSan, parseSan } from "xiangqiops/san";
 import { produce } from "immer";
 import { type StateCreator, createStore } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { info } from "@tauri-apps/plugin-log";
+
+function safeInfo(message: string) {
+  void info(message).catch(() => {});
+}
 
 export interface TreeStoreState {
   root: TreeNode;
@@ -122,6 +135,7 @@ export const createTreeStore = (id?: string, initialTree?: TreeState) => {
         produce((state) => {
           state.dirty = true;
           state.root = defaultTree(fen).root;
+          state.headers.fen = fen.trim();
           state.position = [];
         }),
       ),
@@ -524,26 +538,43 @@ function makeMove({
   const [pos] = positionFromFen(moveNode.fen);
   if (!pos) return;
   const san = makeSan(pos, move);
-  if (san === "--") return; // invalid move
+  if (san === "--") {
+    safeInfo(
+      `[TreeStore] rejected move from=${move.from} to=${move.to} fen=${moveNode.fen}`,
+    );
+    return; // invalid move
+  }
+  safeInfo(
+    `[TreeStore] accepted move from=${move.from} to=${move.to} san=${san} fen=${moveNode.fen}`,
+  );
   pos.play(move);
   if (sound) {
     playSound(san.includes("x"), san.includes("+"));
   }
+  if (changeHeaders && isXiangqiMaterialDraw(pos)) {
+    state.headers.result = "1/2-1/2";
+  }
   if (changeHeaders && pos.isEnd()) {
-    if (pos.isCheckmate()) {
-      state.headers.result = pos.turn === "white" ? "0-1" : "1-0";
-    }
-    if (pos.isStalemate() || pos.isInsufficientMaterial()) {
-      state.headers.result = "1/2-1/2";
+    const winner = getXiangqiWinner(pos);
+    const terminalType = getXiangqiTerminalType(pos);
+
+    if (winner && terminalType) {
+      state.headers.result = winner === "white" ? "1-0" : "0-1";
     }
   }
 
   const newFen = makeFen(pos.toSetup());
+  const repetitionDrawReason = changeHeaders
+    ? getRepetitionOutcome(state, {
+        fen: newFen,
+        move,
+        halfMoves: moveNode.halfMoves + 1,
+      })
+    : null;
 
-  if (
-    (changeHeaders && isThreeFoldRepetition(state, newFen)) ||
-    is50MoveRule(state)
-  ) {
+  if (repetitionDrawReason) {
+    state.headers.result = "1/2-1/2";
+  } else if (isSixtyRoundNoCapture(state)) {
     state.headers.result = "1/2-1/2";
   }
 
@@ -584,35 +615,53 @@ function makeMove({
   }
 }
 
-function isThreeFoldRepetition(state: TreeState, fen: string) {
+function getRepetitionOutcome(
+  state: TreeState,
+  next: { fen: string; move: Move; halfMoves: number },
+) {
   let node = state.root;
-  const fens = [INITIAL_FEN.split(" - ")[0]];
+  const entries = [
+    {
+      fen: node.fen,
+      move: node.move,
+      halfMoves: node.halfMoves,
+    },
+  ];
+
   for (const i of state.position) {
     node = node.children[i];
-    fens.push(node.fen.split(" - ")[0]);
+    entries.push({
+      fen: node.fen,
+      move: node.move,
+      halfMoves: node.halfMoves,
+    });
   }
-  return fens.filter((f) => f === fen.split(" - ")[0]).length >= 2;
+
+  entries.push(next);
+
+  const normalizedNextFen = normalizeFenForRepetition(next.fen);
+  const repetitions = entries.filter(
+    (entry) => normalizeFenForRepetition(entry.fen) === normalizedNextFen,
+  );
+
+  if (repetitions.length < 3) {
+    return null;
+  }
+
+  return getXiangqiRepetitionDrawReason(entries);
 }
 
-function is50MoveRule(state: TreeState) {
+function isSixtyRoundNoCapture(state: TreeState) {
   let node = state.root;
   let count = 0;
   for (const i of state.position) {
     count += 1;
-    const [pos] = positionFromFen(node.fen);
-    if (!pos) return false;
-    if (
-      node.move &&
-      isNormal(node.move) &&
-      (node.move.promotion ||
-        node.san?.includes("x") ||
-        pos.board.get(node.move.from)?.role === "pawn")
-    ) {
+    if (node.move && node.san?.includes("x")) {
       count = 0;
     }
     node = node.children[i];
   }
-  return count >= 100;
+  return count >= 120;
 }
 
 function deleteMove(state: TreeState, path: number[]) {

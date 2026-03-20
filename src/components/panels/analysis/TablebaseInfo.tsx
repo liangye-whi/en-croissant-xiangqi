@@ -9,7 +9,7 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import { parseUci } from "chessops";
+import { parseUci } from "xiangqiops";
 import { useContext } from "react";
 import useSWRImmutable from "swr/immutable";
 import { P, match } from "ts-pattern";

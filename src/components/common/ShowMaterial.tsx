@@ -7,7 +7,7 @@ import {
   IconChessQueenFilled,
   IconChessRookFilled,
 } from "@tabler/icons-react";
-import type { Color } from "chessops";
+import type { Color } from "xiangqiops";
 import { match } from "ts-pattern";
 
 export default function ShowMaterial({
@@ -33,10 +33,13 @@ export default function ShowMaterial({
   const bishops = [...Array(Math.abs(pieces.b)).keys()].map((i) => (
     <IconChessBishopFilled size="1.3rem" key={i} />
   ));
+  const advisors = [...Array(Math.abs(pieces.a)).keys()].map((i) => (
+    <IconChessQueenFilled size="1.3rem" key={i} />
+  ));
   const rooks = [...Array(Math.abs(pieces.r)).keys()].map((i) => (
     <IconChessRookFilled size="1.3rem" key={i} />
   ));
-  const queens = [...Array(Math.abs(pieces.q)).keys()].map((i) => (
+  const cannons = [...Array(Math.abs(pieces.c)).keys()].map((i) => (
     <IconChessQueenFilled size="1.3rem" key={i} />
   ));
 
@@ -47,7 +50,8 @@ export default function ShowMaterial({
         {compare(pieces.n) && knights}
         {compare(pieces.b) && bishops}
         {compare(pieces.r) && rooks}
-        {compare(pieces.q) && queens}
+        {compare(pieces.a) && advisors}
+        {compare(pieces.c) && cannons}
       </Group>
       {compare(diff) && `+${Math.abs(diff)}`}
     </Group>

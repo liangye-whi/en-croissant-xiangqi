@@ -1,16 +1,17 @@
 import { type Outcome, type Score, type Token, commands } from "@/bindings";
-import type { DrawShape } from "chessground/draw";
+import type { DrawShape } from "xiangqiground/draw";
 import {
   type Color,
   type Move,
   type Role,
   makeSquare,
   makeUci,
-} from "chessops";
-import { type Chess, castlingSide, normalizeMove } from "chessops/chess";
-import { INITIAL_FEN, makeFen, parseFen } from "chessops/fen";
+} from "xiangqiops";
+import { castlingSide } from "chessops/chess";
+import { type Chess } from "xiangqiops/chess";
+import { INITIAL_FEN, makeFen, parseFen } from "xiangqiops/fen";
 import { isPawns, parseComment } from "chessops/pgn";
-import { makeSan, parseSan } from "chessops/san";
+import { makeSan, parseSan } from "xiangqiops/san";
 import { match } from "ts-pattern";
 import { ANNOTATION_INFO, NAG_INFO, isBasicAnnotation } from "./annotation";
 import { parseSanOrUci, positionFromFen } from "./chessops";
@@ -152,19 +153,21 @@ export function getMainLine(root: TreeNode, is960: boolean): string[] {
 }
 
 // outputs the correct uci move for castling in chess960 and standard chess
-export function uciNormalize(chess: Chess, move: Move, chess960?: boolean) {
-  const side = castlingSide(chess, move);
-  const frcMove = normalizeMove(chess, move);
-  if (side && !chess960) {
-    const standardMove = match(makeUci(frcMove))
-      .with("e1h1", () => "e1g1")
-      .with("e1a1", () => "e1c1")
-      .with("e8h8", () => "e8g8")
-      .with("e8a8", () => "e8c8")
-      .otherwise((v) => v);
-    return standardMove;
-  }
-  return makeUci(frcMove);
+export function uciNormalize(move: Move) {
+  //const side = castlingSide(chess, move);
+  //const frcMove = normalizeMove(move);
+  //if (side && !chess960) {
+  //  const standardMove = match(makeUci(frcMove))
+  //    .with("e1h1", () => "e1g1")
+  //    .with("e1a1", () => "e1c1")
+  //    .with("e8h8", () => "e8g8")
+  //    .with("e8a8", () => "e8c8")
+  //    .otherwise((v) => v);
+  //  return standardMove;
+  //}
+  //alert(`${move.from},${move.to}`);
+  //const move1 = {...move,from:move.from+9,to:move.to+9,};
+  return makeUci(move);
 }
 
 export function getVariationLine(
@@ -182,12 +185,12 @@ export function getVariationLine(
   for (const pos of position) {
     node = node.children[pos];
     if (node.move) {
-      moves.push(uciNormalize(chess, node.move, chess960));
+      moves.push(uciNormalize(node.move));
       chess.play(node.move);
     }
   }
   if (includeLastMove && node.children.length > 0) {
-    moves.push(uciNormalize(chess, node.children[0].move!, chess960));
+    moves.push(uciNormalize(node.children[0].move!));
   }
   return moves;
 }
@@ -659,11 +662,12 @@ export function getMaterialDiff(fen: string) {
     n: pieceDiff("knight"),
     b: pieceDiff("bishop"),
     r: pieceDiff("rook"),
-    q: pieceDiff("queen"),
+    c: pieceDiff("cannon"),
+    a: pieceDiff("advisor"),
   };
 
   const diff =
-    pieces.p * 1 + pieces.n * 3 + pieces.b * 3 + pieces.r * 5 + pieces.q * 9;
+    pieces.p * 2 + pieces.n * 4 + pieces.b * 2 + pieces.a * 1 + pieces.r * 10 + pieces.c * 5;
 
   return { pieces, diff };
 }

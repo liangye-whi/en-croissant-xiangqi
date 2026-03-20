@@ -48,10 +48,11 @@ const pieceSets: Item[] = [
   { label: "Spatial", value: "spatial" },
   { label: "Staunty", value: "staunty" },
   { label: "Tatiana", value: "tatiana" },
+  { label: "Xiangqi", value: "xiangqi" },
 ];
 
 function DisplayPieces() {
-  const pieces = ["rook", "knight", "bishop", "queen", "king", "pawn"] as const;
+  const pieces = ["rook", "cannon", "knight", "bishop", "advisor", "king", "pawn"] as const;
   return (
     <Flex gap="xs">
       {pieces.map((role, index) => (

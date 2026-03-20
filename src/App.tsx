@@ -64,7 +64,7 @@ const router = createRouter({
       const store = getDefaultStore();
       const doc =
         store.get(storedDocumentDirAtom) ||
-        (await resolve(await documentDir(), "EnCroissant"));
+        (await resolve(await documentDir(), "EnCroissant-XiangQi"));
       const dirs: Dirs = { documentDir: doc };
       return dirs;
     },

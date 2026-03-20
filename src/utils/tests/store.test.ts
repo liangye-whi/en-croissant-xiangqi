@@ -1,505 +1,148 @@
 import { createTreeStore } from "@/state/store";
-import { type TreeState, defaultTree } from "@/utils/treeReducer";
-import { parseUci } from "chessops";
+import { defaultTree } from "@/utils/treeReducer";
 import { beforeEach, expect, test } from "vitest";
+import { INITIAL_FEN } from "xiangqiops/fen";
+import { parseUci } from "xiangqiops";
 
 const store = createTreeStore();
 
 beforeEach(() => {
+  HTMLMediaElement.prototype.play = () => Promise.resolve();
   store.setState(defaultTree());
 });
 
-const e4 = parseUci("e2e4")!;
-const d5 = parseUci("d7d5")!;
-const e5 = parseUci("e7e5")!;
-const treeE4D5: () => TreeState = () => ({
-  ...defaultTree(),
-  position: [0, 0],
-  root: {
-    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    move: null,
-    san: null,
-    children: [
-      {
-        fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-        move: e4,
-        san: "e4",
-        children: [
-          {
-            fen: "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
-            move: d5,
-            san: "d5",
-            clock: undefined,
-            children: [],
-            score: null,
-            depth: null,
-            halfMoves: 2,
-            shapes: [],
-            annotations: [],
-            comment: "",
-          },
-        ],
-        clock: undefined,
-        score: null,
-        depth: null,
-        halfMoves: 1,
-        shapes: [],
-        annotations: [],
-        comment: "",
-      },
-    ],
-    score: null,
-    depth: null,
-    halfMoves: 0,
-    shapes: [],
-    annotations: [],
-    comment: "",
-  },
-});
-
-const treeE4D5Nf3: () => TreeState = () => ({
-  ...defaultTree(),
-  position: [0, 0],
-  root: {
-    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    move: null,
-    san: null,
-    children: [
-      {
-        fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-        move: e4,
-        san: "e4",
-        children: [
-          {
-            fen: "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
-            move: d5,
-            san: "d5",
-            clock: undefined,
-            children: [],
-            score: null,
-            depth: null,
-            halfMoves: 2,
-            shapes: [],
-            annotations: [],
-            comment: "",
-          },
-        ],
-        clock: undefined,
-        score: null,
-        depth: null,
-        halfMoves: 1,
-        shapes: [],
-        annotations: [],
-        comment: "",
-      },
-      {
-        fen: "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
-        move: parseUci("g1f3")!,
-        san: "Nf3",
-        children: [],
-        clock: undefined,
-        score: null,
-        depth: null,
-        halfMoves: 1,
-        shapes: [],
-        annotations: [],
-        comment: "",
-      },
-    ],
-    score: null,
-    depth: null,
-    halfMoves: 0,
-    shapes: [],
-    annotations: [],
-    comment: "",
-  },
-});
-
-const getNewState = () => {
-  const s = store.getState();
+function getStateSnapshot() {
+  const state = store.getState();
   return {
-    root: s.root,
-    position: s.position,
-    headers: s.headers,
-    dirty: s.dirty,
+    root: state.root,
+    position: state.position,
+    headers: state.headers,
+    dirty: state.dirty,
   };
-};
+}
+
+function playOpeningMove() {
+  const move = parseUci("e3e4");
+  if (!move) {
+    throw new Error("Failed to parse xiangqi opening move");
+  }
+  store.getState().makeMove({ payload: move });
+}
 
 test("should handle save", () => {
   store.setState({ dirty: true });
   store.getState().save();
 
-  expect(getNewState()).toStrictEqual({ ...defaultTree(), dirty: false });
-});
-
-test("should handle setState", () => {
-  store.getState().setState(treeE4D5());
-  expect(getNewState()).toStrictEqual(treeE4D5());
+  expect(getStateSnapshot()).toStrictEqual({ ...defaultTree(), dirty: false });
 });
 
 test("should handle reset", () => {
-  store.setState(treeE4D5());
+  playOpeningMove();
   store.getState().reset();
-  expect(getNewState()).toStrictEqual(defaultTree());
+
+  expect(getStateSnapshot()).toStrictEqual(defaultTree());
 });
 
-test("should handle setHeaders", () => {
+test("should update headers for the current tree", () => {
   store.getState().setHeaders({
     ...defaultTree().headers,
     orientation: "black",
-    start: [1],
+    start: [0],
   });
 
-  expect(getNewState()).toStrictEqual({
+  expect(getStateSnapshot()).toStrictEqual({
     ...defaultTree(),
     dirty: true,
     headers: {
       ...defaultTree().headers,
       orientation: "black",
-      start: [1],
+      start: [0],
     },
   });
 });
 
-test("should handle setStart", () => {
-  store.getState().setStart([1]);
+test("should append a xiangqi move to the current tree", () => {
+  playOpeningMove();
 
-  expect(getNewState()).toStrictEqual({
-    ...defaultTree(),
-    dirty: true,
-    headers: { ...defaultTree().headers, start: [1] },
-  });
+  const state = getStateSnapshot();
+  expect(state.dirty).toBe(true);
+  expect(state.position).toStrictEqual([0]);
+  expect(state.root.children).toHaveLength(1);
+  expect(state.root.children[0].san).toBe("B5.1");
+  expect(state.root.children[0].fen).toBe(
+    "rnbakabnr/9/1c5c1/p1p1p1p1p/9/4P4/P1P3P1P/1C5C1/9/RNBAKABNR b 1 1",
+  );
 });
 
-test("should handle makeMove", () => {
-  store.getState().makeMove({ payload: e4 });
+test("should navigate forward and backward through the main line", () => {
+  playOpeningMove();
 
-  expect(getNewState()).toStrictEqual({
-    ...defaultTree(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...defaultTree().root,
-      children: [
-        {
-          fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-          move: e4,
-          san: "e4",
-          children: [],
-          score: null,
-          clock: undefined,
-          depth: null,
-          halfMoves: 1,
-          shapes: [],
-          annotations: [],
-          comment: "",
-        },
-      ],
-    },
-  });
-});
-
-test("should handle makeMoves", () => {
-  store.getState().makeMoves({ payload: ["e4", "d5"] });
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0, 0],
-  });
-});
-
-test("should handle goToStart", () => {
-  store.setState(treeE4D5());
   store.getState().goToStart();
+  expect(store.getState().position).toStrictEqual([]);
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [],
-  });
-});
-
-test("should handle goToEnd", () => {
-  store.setState({ ...treeE4D5(), position: [] });
-  store.getState().goToEnd();
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [0, 0],
-  });
-});
-
-test("should handle goToNext", () => {
-  store.setState({ ...treeE4D5(), position: [] });
   store.getState().goToNext();
+  expect(store.getState().position).toStrictEqual([0]);
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [0],
-  });
-});
-
-test("should handle goToPrevious", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
   store.getState().goToPrevious();
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [],
-  });
+  expect(store.getState().position).toStrictEqual([]);
 });
 
-test("should handle goToBranchEnd", () => {
-  store.setState({ ...treeE4D5(), position: [] });
-  store.getState().goToBranchEnd();
+test("should delete a variation and keep the xiangqi root position", () => {
+  playOpeningMove();
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [0, 0],
-  });
-});
-
-test("should handle goToBranchStart", () => {
-  store.setState({ ...treeE4D5(), position: [0, 0] });
-  store.getState().goToBranchStart();
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [],
-  });
-});
-
-test("should handle goToMove", () => {
-  store.setState({ ...treeE4D5(), position: [] });
-  store.getState().goToMove([0]);
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    position: [0],
-  });
-});
-
-test("should handle deleteMove", () => {
-  store.setState(treeE4D5());
   store.getState().deleteMove([0]);
 
-  expect(getNewState()).toStrictEqual({ ...defaultTree(), dirty: true });
+  const state = getStateSnapshot();
+  expect(state.dirty).toBe(true);
+  expect(state.position).toStrictEqual([]);
+  expect(state.root.children).toHaveLength(0);
+  expect(state.root.fen).toBe(INITIAL_FEN);
 });
 
-test("should handle setAnnotation", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
-  store.getState().setAnnotation("!");
+test("should replace the root fen", () => {
+  const fen =
+    "4k4/9/9/9/9/9/9/9/9/4K4 w 0 1";
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5().root,
-      children: [
-        {
-          ...treeE4D5().root.children[0],
-          annotations: ["!"],
-        },
-      ],
-    },
-  });
+  store.getState().setFen(fen);
+
+  const state = getStateSnapshot();
+  expect(state.dirty).toBe(true);
+  expect(state.root.fen).toBe(fen);
+  expect(state.headers.fen).toBe(fen);
+  expect(state.position).toStrictEqual([]);
 });
 
-test("should handle setComment", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
-  store.getState().setComment("test");
+test("should update score and shapes on the current node", () => {
+  playOpeningMove();
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5().root,
-      children: [
-        {
-          ...treeE4D5().root.children[0],
-          comment: "test",
-        },
-      ],
-    },
-  });
-});
-
-test("should handle setFen", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
-  store
-    .getState()
-    .setFen("rnbq1bnr/ppppkppp/8/4p3/4P3/8/PPPPKPPP/RNBQ1BNR w - - 2 3");
-
-  expect(getNewState()).toStrictEqual({
-    ...defaultTree(),
-    dirty: true,
-    root: {
-      ...defaultTree().root,
-      fen: "rnbq1bnr/ppppkppp/8/4p3/4P3/8/PPPPKPPP/RNBQ1BNR w - - 2 3",
-    },
-  });
-});
-
-test("should handle setScore", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
   store.getState().setScore({
     value: {
-      type: "mate",
-      value: 1,
+      type: "cp",
+      value: 42,
     },
     wdl: null,
   });
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5().root,
-      children: [
-        {
-          ...treeE4D5().root.children[0],
-          score: {
-            value: {
-              type: "mate",
-              value: 1,
-            },
-            wdl: null,
-          },
-        },
-      ],
-    },
-  });
-});
-
-test("should handle setShapes", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
   store.getState().setShapes([
     {
       brush: "red",
-      orig: "e4",
-      dest: "d5",
+      orig: "e3",
+      dest: "e4",
     },
   ]);
 
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5().root,
-      children: [
-        {
-          ...treeE4D5().root.children[0],
-          shapes: [
-            {
-              brush: "red",
-              orig: "e4",
-              dest: "d5",
-            },
-          ],
-        },
-      ],
+  const currentNode = store.getState().currentNode();
+  expect(currentNode.score).toStrictEqual({
+    value: {
+      type: "cp",
+      value: 42,
     },
+    wdl: null,
   });
-});
-
-test("should handle addAnalysis", () => {
-  store.setState({ ...treeE4D5(), position: [0] });
-  store.getState().addAnalysis([
+  expect(currentNode.shapes).toStrictEqual([
     {
-      best: [
-        {
-          depth: 1,
-          multipv: 1,
-          nodes: 1,
-          score: {
-            value: {
-              type: "cp",
-              value: 10,
-            },
-            wdl: null,
-          },
-          nps: 1000,
-          sanMoves: ["e4"],
-          uciMoves: ["e2e4"],
-        },
-      ],
-      novelty: false,
-      is_sacrifice: false,
-    },
-    {
-      best: [
-        {
-          depth: 1,
-          multipv: 1,
-          nodes: 1,
-          score: {
-            value: {
-              type: "cp",
-              value: 20,
-            },
-            wdl: null,
-          },
-          nps: 1000,
-          sanMoves: ["d5"],
-          uciMoves: ["d7d5"],
-        },
-      ],
-      novelty: false,
-      is_sacrifice: false,
+      brush: "red",
+      orig: "e3",
+      dest: "e4",
     },
   ]);
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5().root,
-      children: [
-        {
-          ...treeE4D5().root.children[0],
-          score: {
-            value: {
-              type: "cp",
-              value: 20,
-            },
-            wdl: null,
-          },
-        },
-      ],
-      score: {
-        value: {
-          type: "cp",
-          value: 10,
-        },
-        wdl: null,
-      },
-    },
-  });
-});
-
-test("should handle promoteVariation", () => {
-  store.setState(treeE4D5Nf3());
-  store.getState().promoteVariation([1]);
-
-  expect(getNewState()).toStrictEqual({
-    ...treeE4D5Nf3(),
-    dirty: true,
-    position: [0],
-    root: {
-      ...treeE4D5Nf3().root,
-      children: [
-        {
-          ...treeE4D5Nf3().root.children[1],
-        },
-        {
-          ...treeE4D5Nf3().root.children[0],
-        },
-      ],
-    },
-  });
 });

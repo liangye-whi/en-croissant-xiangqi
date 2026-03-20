@@ -1,0 +1,30 @@
+[package]
+name = "shakmaty-fuzz"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+shakmaty = { path = ".." }
+
+[workspace]
+members = ["."] # Let fuzz suite not interfere with workspaces
+
+[[bin]]
+name = "fen"
+path = "fuzz_targets/fen.rs"
+
+[[bin]]
+name = "san"
+path = "fuzz_targets/san.rs"
+
+[[bin]]
+name = "uci"
+path = "fuzz_targets/uci.rs"
+
+[[bin]]
+name = "square"
+path = "fuzz_targets/square.rs"

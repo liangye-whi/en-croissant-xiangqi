@@ -7,10 +7,10 @@ import { positionFromFen } from "@/utils/chessops";
 import { ActionIcon, Box, Flex, Portal, Table } from "@mantine/core";
 import { useForceUpdate } from "@mantine/hooks";
 import { IconChevronDown } from "@tabler/icons-react";
-import type { Key } from "chessground/types";
-import { chessgroundMove } from "chessops/compat";
-import { makeFen } from "chessops/fen";
-import { parseSan } from "chessops/san";
+import type { Key } from "xiangqiground/types";
+import { chessgroundMove } from "xiangqiops/compat";
+import { makeFen } from "xiangqiops/fen";
+import { parseSan } from "xiangqiops/san";
 import { useAtom, useAtomValue } from "jotai";
 import {
   useContext,

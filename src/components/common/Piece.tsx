@@ -1,5 +1,5 @@
-import type { Color, Piece } from "chessground/types";
-import type { Square } from "chessops";
+import type { Color, Piece } from "xiangqiground/types";
+import type { Square } from "xiangqiops";
 import { squareFromCoords } from "chessops/util";
 import { useRef } from "react";
 import Draggable from "react-draggable";

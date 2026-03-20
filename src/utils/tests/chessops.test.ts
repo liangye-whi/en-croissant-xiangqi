@@ -1,54 +1,76 @@
-import { parseSquare } from "chessops";
-import { parseFen } from "chessops/fen";
 import { expect, test } from "vitest";
-import { getCastlingSquare } from "../chessops";
+import { INITIAL_FEN } from "xiangqiops/fen";
+import {
+  getXiangqiRepetitionDrawReason,
+  isXiangqiMaterialDraw,
+  getXiangqiTerminalType,
+  getXiangqiWinner,
+  getPiecesCount,
+  hasCaptures,
+  parseSanOrUci,
+  positionFromFen,
+  swapMove,
+} from "../chessops";
 
-test("should get the correct castling square in the starting position", () => {
-  const setup = parseFen(
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-  ).unwrap();
-  expect(getCastlingSquare(setup, "w", "k")).toBe(parseSquare("h1"));
-  expect(getCastlingSquare(setup, "w", "q")).toBe(parseSquare("a1"));
-  expect(getCastlingSquare(setup, "b", "k")).toBe(parseSquare("h8"));
-  expect(getCastlingSquare(setup, "b", "q")).toBe(parseSquare("a8"));
+test("should parse the default xiangqi position", () => {
+  const [pos, error] = positionFromFen(INITIAL_FEN);
+
+  expect(error).toBeNull();
+  expect(pos).not.toBeNull();
+  expect(getPiecesCount(pos!)).toBe(32);
+  expect(hasCaptures(pos!)).toBe(true);
 });
 
-test("should get the correct castling square in FRC 1", () => {
-  const setup = parseFen(
-    "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1",
-  ).unwrap();
-  expect(getCastlingSquare(setup, "w", "k")).toBe(parseSquare("h1"));
-  expect(getCastlingSquare(setup, "w", "q")).toBe(parseSquare("f1"));
-  expect(getCastlingSquare(setup, "b", "k")).toBe(parseSquare("h8"));
-  expect(getCastlingSquare(setup, "b", "q")).toBe(parseSquare("f8"));
+test("should swap the side to move in fen", () => {
+  expect(swapMove(INITIAL_FEN)).toBe(
+    "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b 0 1",
+  );
 });
 
-test("should get the correct castling square in FRC 500", () => {
-  const setup = parseFen(
-    "brqnknrb/pppppppp/8/8/8/8/PPPPPPPP/BRQNKNRB w KQkq - 0 1",
-  ).unwrap();
-  expect(getCastlingSquare(setup, "w", "k")).toBe(parseSquare("g1"));
-  expect(getCastlingSquare(setup, "w", "q")).toBe(parseSquare("b1"));
-  expect(getCastlingSquare(setup, "b", "k")).toBe(parseSquare("g8"));
-  expect(getCastlingSquare(setup, "b", "q")).toBe(parseSquare("b8"));
+test("should parse xiangqi uci moves", () => {
+  const [pos] = positionFromFen(INITIAL_FEN);
+  const move = parseSanOrUci(pos!, "e3e4");
+
+  expect(move).toEqual({ from: 31, to: 40 });
 });
 
-test("should get the correct castling square in FRC 600", () => {
-  const setup = parseFen(
-    "rqbnkrnb/pppppppp/8/8/8/8/PPPPPPPP/RQBNKRNB w KQkq - 0 1",
-  ).unwrap();
-  expect(getCastlingSquare(setup, "w", "k")).toBe(parseSquare("f1"));
-  expect(getCastlingSquare(setup, "w", "q")).toBe(parseSquare("a1"));
-  expect(getCastlingSquare(setup, "b", "k")).toBe(parseSquare("f8"));
-  expect(getCastlingSquare(setup, "b", "q")).toBe(parseSquare("a8"));
+test("should classify checkmate and stalemate using xiangqi rules", () => {
+  const [checkmatedPos, checkmatedError] = positionFromFen(
+    "R3k4/R8/9/9/9/9/9/9/9/3K5 b 0 1",
+  );
+  const [stalematedPos, stalematedError] = positionFromFen(
+    "4k4/5R3/9/9/9/9/9/9/9/R2K5 b 0 1",
+  );
+
+  expect(checkmatedError).toBeNull();
+  expect(stalematedError).toBeNull();
+
+  expect(checkmatedPos?.isEnd()).toBe(true);
+  expect(checkmatedPos?.isCheck()).toBe(true);
+  expect(getXiangqiTerminalType(checkmatedPos!)).toBe("checkmate");
+  expect(getXiangqiWinner(checkmatedPos!)).toBe("white");
+
+  expect(stalematedPos?.isEnd()).toBe(true);
+  expect(stalematedPos?.isCheck()).toBe(false);
+  expect(getXiangqiTerminalType(stalematedPos!)).toBe("stalemate");
+  expect(getXiangqiWinner(stalematedPos!)).toBe("white");
 });
 
-test("should get the correct castling square in FRC 608", () => {
-  const setup = parseFen(
-    "rqnkrnbb/pppppppp/8/8/8/8/PPPPPPPP/RQNKRNBB w EAea - 0 1",
-  ).unwrap();
-  expect(getCastlingSquare(setup, "w", "k")).toBe(parseSquare("e1"));
-  expect(getCastlingSquare(setup, "w", "q")).toBe(parseSquare("a1"));
-  expect(getCastlingSquare(setup, "b", "k")).toBe(parseSquare("e8"));
-  expect(getCastlingSquare(setup, "b", "q")).toBe(parseSquare("a8"));
+test("should detect draw material when both sides have no attacking pieces", () => {
+  const [pos, error] = positionFromFen("4k4/9/9/9/9/9/9/9/9/4K4 w 0 1");
+
+  expect(error).toBeNull();
+  expect(isXiangqiMaterialDraw(pos!)).toBe(true);
+});
+
+test("should detect cyclic repetition as a draw reason", () => {
+  expect(
+    getXiangqiRepetitionDrawReason([
+      { fen: INITIAL_FEN, move: null, halfMoves: 0 },
+      { fen: "rnbakabnr/9/1c5c1/p1p1p1p1p/9/4P4/P1P3P1P/1C5C1/9/RNBAKABNR b 1 1", move: { from: 31, to: 40 }, halfMoves: 1 },
+      { fen: INITIAL_FEN, move: { from: 40, to: 31 }, halfMoves: 2 },
+      { fen: "rnbakabnr/9/1c5c1/p1p1p1p1p/9/4P4/P1P3P1P/1C5C1/9/RNBAKABNR b 1 1", move: { from: 31, to: 40 }, halfMoves: 3 },
+      { fen: INITIAL_FEN, move: { from: 40, to: 31 }, halfMoves: 4 },
+    ]),
+  ).toBe("cyclic-repetition");
 });

@@ -26,7 +26,7 @@ import {
   IconMinus,
   IconPlus,
 } from "@tabler/icons-react";
-import { INITIAL_FEN } from "chessops/fen";
+import { INITIAL_FEN } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { memo, useContext, useEffect, useRef, useState } from "react";

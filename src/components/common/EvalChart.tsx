@@ -1,6 +1,10 @@
 import { reportTypeAtom } from "@/state/atoms";
 import { ANNOTATION_INFO } from "@/utils/annotation";
-import { positionFromFen } from "@/utils/chessops";
+import {
+  getXiangqiTerminalType,
+  getXiangqiWinner,
+  positionFromFen,
+} from "@/utils/chessops";
 import { skipWhile, takeWhile } from "@/utils/misc";
 import { formatScore } from "@/utils/score";
 import {
@@ -68,11 +72,12 @@ function EvalChart(props: EvalChartProps) {
     if (node.children.length === 0) {
       const [pos, error] = positionFromFen(node.fen);
       if (pos) {
-        if (pos.isCheckmate()) {
-          return pos?.turn === "white" ? -1 : 1;
+        const winner = getXiangqiWinner(pos);
+        if (winner === "white") {
+          return 1;
         }
-        if (pos.isStalemate()) {
-          return 0;
+        if (winner === "black") {
+          return -1;
         }
       }
     }
@@ -95,8 +100,9 @@ function EvalChart(props: EvalChartProps) {
     if (node.children.length === 0) {
       const [pos, error] = positionFromFen(node.fen);
       if (pos) {
-        if (pos.isCheckmate()) return t("Common.Checkmate");
-        if (pos.isStalemate()) return t("Common.Stalemate");
+        const terminalType = getXiangqiTerminalType(pos);
+        if (terminalType === "checkmate") return t("Common.Checkmate");
+        if (terminalType === "stalemate") return t("Common.Stalemate");
       }
     }
     return t("Board.Analysis.NotAnalysed");

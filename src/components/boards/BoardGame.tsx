@@ -33,8 +33,6 @@ import {
   IconPlus,
   IconZoomCheck,
 } from "@tabler/icons-react";
-import { parseUci } from "chessops";
-import { INITIAL_FEN } from "chessops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import {
@@ -47,6 +45,8 @@ import {
 } from "react";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
+import { parseUci } from "xiangqiops";
+import { INITIAL_FEN } from "xiangqiops/fen";
 import GameInfo from "../common/GameInfo";
 import GameNotation from "../common/GameNotation";
 import MoveControls from "../common/MoveControls";
@@ -602,7 +602,7 @@ function BoardGame() {
           viewOnly={gameState !== "playing"}
           disableVariations
           boardRef={boardRef}
-          canTakeBack={onePlayerIsEngine}
+          canTakeBack={gameState === "playing" && root.children.length > 0}
           movable={movable}
           whiteTime={
             gameState === "playing" ? (whiteTime ?? undefined) : undefined

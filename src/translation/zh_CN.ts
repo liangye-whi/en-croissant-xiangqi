@@ -43,7 +43,7 @@ export const zh_CN = {
     "Common.Stop": "停止",
     "Common.Engine": "引擎",
     "Common.Checkmate": "将杀",
-    "Common.Stalemate": "无子可动",
+    "Common.Stalemate": "困毙",
     "Common.WHITE": "白方",
     "Common.BLACK": "黑方",
 

@@ -14,6 +14,8 @@ import { useAtom } from "jotai";
 const boardImages: string[] = [
   "purple.svg",
   "newspaper.svg",
+  "xiangqi.svg",
+  "xiangqi-b.svg",
   "ic.svg",
   "green.svg",
   "gray.svg",

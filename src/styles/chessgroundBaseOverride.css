@@ -30,8 +30,8 @@ cg-board square {
   position: absolute;
   top: 0;
   left: 0;
-  width: 12.5%;
-  height: 12.5%;
+  width: 11.11%;
+  height: 10%;
   pointer-events: none;
 }
 
@@ -47,8 +47,8 @@ cg-board square.last-move {
   position: absolute;
   top: 0;
   left: 0;
-  width: 12.5%;
-  height: 12.5%;
+  width: 11.11%;
+  height: 10%;
   background-size: cover;
   z-index: 2;
   will-change: transform;

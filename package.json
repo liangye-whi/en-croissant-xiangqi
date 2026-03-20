@@ -2,6 +2,7 @@
   "name": "en-croissant",
   "private": true,
   "version": "0.11.1",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "start-vite": "vite",
@@ -78,6 +79,8 @@
     "ts-fsrs": "^3.5.1",
     "ts-pattern": "^5.0.8",
     "vite": "^5.4.8",
+    "xiangqiground": "link:xiangqiground",
+    "xiangqiops": "^1.0.10",
     "zod": "^3.22.4",
     "zustand": "^4.5.2"
   },

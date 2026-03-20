@@ -5,7 +5,7 @@ import {
 } from "@/utils/annotation";
 import { squareToCoordinates } from "@/utils/chessops";
 import { Box } from "@mantine/core";
-import type { Color, Square } from "chessops";
+import type { Color, Square } from "xiangqiops";
 
 export default function AnnotationHint({
   square,
@@ -23,10 +23,10 @@ export default function AnnotationHint({
     <Box
       style={{
         position: "absolute",
-        width: "12.5%",
-        height: "12.5%",
-        left: `${(file - 1) * 12.5}%`,
-        bottom: `${(rank - 1) * 12.5}%`,
+        width: "11.11%",
+        height: "10%",
+        left: `${(file - 1) * 11.11}%`,
+        bottom: `${(rank - 1) * 10}%`,
       }}
     >
       <Box pl="90%">

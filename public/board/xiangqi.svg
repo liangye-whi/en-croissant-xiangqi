@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 10" shape-rendering="crispEdges">
+  <!-- 灰白两色定义 -->
+  <rect id="w" width="1" height="1" fill="#e9ecef"/>
+  <rect id="b" width="1" height="1" fill="#868e96"/>
+
+  <!-- 定义 2×2 模块 -->
+  <g id="tile">
+    <use href="#w" x="0" y="0"/>
+    <use href="#b" x="1" y="0"/>
+    <use href="#b" x="0" y="1"/>
+    <use href="#w" x="1" y="1"/>
+  </g>
+
+  <!-- 横向 2×2 tile 平铺4次（共8列） -->
+  <g id="row">
+    <use href="#tile" x="0"/>
+    <use href="#tile" x="2"/>
+    <use href="#tile" x="4"/>
+    <use href="#tile" x="6"/>
+  </g>
+
+  <!-- 垂直平铺 row 5次（共10行） -->
+  <use href="#row" y="0"/>
+  <use href="#row" y="2"/>
+  <use href="#row" y="4"/>
+  <use href="#row" y="6"/>
+  <use href="#row" y="8"/>
+
+  <!-- 补第9列 -->
+  <g id="col9">
+    <!-- 按照交替规则决定颜色 -->
+    <use href="#w" x="8" y="0"/>
+    <use href="#b" x="8" y="1"/>
+    <use href="#w" x="8" y="2"/>
+    <use href="#b" x="8" y="3"/>
+    <use href="#w" x="8" y="4"/>
+    <use href="#b" x="8" y="5"/>
+    <use href="#w" x="8" y="6"/>
+    <use href="#b" x="8" y="7"/>
+    <use href="#w" x="8" y="8"/>
+    <use href="#b" x="8" y="9"/>
+  </g>
+</svg>
+

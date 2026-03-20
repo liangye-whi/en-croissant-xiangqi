@@ -50,6 +50,7 @@ import {
   IconEditOff,
   IconEraser,
   IconPlus,
+  IconRestore,
   IconSwitchVertical,
   IconTarget,
   IconZoomCheck,
@@ -57,19 +58,28 @@ import {
 import { documentDir } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import type { DrawShape } from "chessground/draw";
+import { info } from "@tauri-apps/plugin-log";
+import type { DrawShape } from "xiangqiground/draw";
+import type { Key as BoardKey } from "xiangqiground/types";
 import {
   type NormalMove,
-  type SquareName,
   makeSquare,
   parseSquare,
   parseUci,
-} from "chessops";
-import { chessgroundDests, chessgroundMove } from "chessops/compat";
-import { makeSan } from "chessops/san";
+} from "xiangqiops";
+import { chessgroundDests, chessgroundMove } from "xiangqiops/compat";
+import { makeSan } from "xiangqiops/san";
 import domtoimage from "dom-to-image";
 import { useAtom, useAtomValue } from "jotai";
-import { memo, useCallback, useContext, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Helmet } from "react-helmet";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
@@ -89,6 +99,10 @@ import PromotionModal from "./PromotionModal";
 const LARGE_BRUSH = 11;
 const MEDIUM_BRUSH = 7.5;
 const SMALL_BRUSH = 4;
+
+function safeInfo(message: string) {
+  void info(message).catch(() => {});
+}
 
 interface ChessboardProps {
   dirty: boolean;
@@ -144,6 +158,7 @@ function Board({
 
   const goToNext = useStore(store, (s) => s.goToNext);
   const goToPrevious = useStore(store, (s) => s.goToPrevious);
+  const goToStart = useStore(store, (s) => s.goToStart);
   const storeMakeMove = useStore(store, (s) => s.makeMove);
   const setHeaders = useStore(store, (s) => s.setHeaders);
   const deleteMove = useStore(store, (s) => s.deleteMove);
@@ -163,15 +178,17 @@ function Board({
   const showCoordinates = useAtomValue(showCoordinatesAtom);
   const autoSave = useAtomValue(autoSaveAtom);
 
-  let dests: Map<SquareName, SquareName[]> = pos
-    ? chessgroundDests(pos)
-    : new Map();
-  if (forcedEP && pos) {
-    dests = forceEnPassant(dests, pos);
-  }
+  const dests: Map<BoardKey, BoardKey[]> = pos ? chessgroundDests(pos) : new Map();
 
   const [viewPawnStructure, setViewPawnStructure] = useState(false);
   const [pendingMove, setPendingMove] = useState<NormalMove | null>(null);
+  const whiteTimeRef = useRef(whiteTime);
+  const blackTimeRef = useRef(blackTime);
+
+  useEffect(() => {
+    whiteTimeRef.current = whiteTime;
+    blackTimeRef.current = blackTime;
+  }, [whiteTime, blackTime]);
 
   const turn = pos?.turn || "white";
   const orientation = headers.orientation || "white";
@@ -181,6 +198,11 @@ function Board({
       fen: root.fen, // To keep the current board setup
       orientation: orientation === "black" ? "white" : "black",
     });
+
+  const resetPosition = useCallback(() => {
+    setFen(rootFen);
+    goToStart();
+  }, [goToStart, rootFen, setFen]);
 
   const takeSnapshot = async () => {
     const ref = boardRef?.current;
@@ -222,45 +244,61 @@ function Board({
     }),
   );
 
-  async function makeMove(move: NormalMove) {
-    if (!pos) return;
-    const san = makeSan(pos, move);
-    if (practicing) {
-      const c = deck.positions.find((c) => c.fen === currentNode.fen);
-      if (!c) {
-        return;
-      }
+  const makeMove = useCallback(
+    async (move: NormalMove) => {
+      if (!pos) return;
 
-      let isRecalled = true;
-      if (san !== c?.answer) {
-        isRecalled = false;
-      }
-      const i = deck.positions.indexOf(c);
+      const san = makeSan(pos, move);
+      if (practicing) {
+        const c = deck.positions.find((c) => c.fen === currentNode.fen);
+        if (!c) {
+          return;
+        }
 
-      if (!isRecalled) {
-        notifications.show({
-          title: t("Common.Incorrect"),
-          message: t("Board.Practice.CorrectMoveWas", { move: c.answer }),
-          color: "red",
-        });
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        goToNext();
+        let isRecalled = true;
+        if (san !== c.answer) {
+          isRecalled = false;
+        }
+        const i = deck.positions.indexOf(c);
+
+        if (!isRecalled) {
+          notifications.show({
+            title: t("Common.Incorrect"),
+            message: t("Board.Practice.CorrectMoveWas", { move1: c.answer }),
+            color: "red",
+          });
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          goToNext();
+        } else {
+          storeMakeMove({
+            payload: move,
+          });
+          setPendingMove(null);
+        }
+
+        updateCardPerformance(setDeck, i, c.card, isRecalled ? 4 : 1);
       } else {
         storeMakeMove({
           payload: move,
+          clock:
+            pos.turn === "white"
+              ? whiteTimeRef.current
+              : blackTimeRef.current,
         });
         setPendingMove(null);
       }
-
-      updateCardPerformance(setDeck, i, c.card, isRecalled ? 4 : 1);
-    } else {
-      storeMakeMove({
-        payload: move,
-        clock: pos.turn === "white" ? whiteTime : blackTime,
-      });
-      setPendingMove(null);
-    }
-  }
+    },
+    [
+      currentNode.fen,
+      deck.positions,
+      goToNext,
+      pos,
+      practicing,
+      setDeck,
+      storeMakeMove,
+      t,
+    ],
+  );
 
   let shapes: DrawShape[] = [];
   if (showArrows && evalOpen && arrows.size > 0 && pos) {
@@ -277,6 +315,8 @@ function Board({
             posClone.play(m);
             const from = makeSquare(m.from)!;
             const to = makeSquare(m.to)!;
+            //alert(`${from},${to}`);
+            
             if (prevSquare === null) {
               prevSquare = from;
             }
@@ -380,6 +420,17 @@ function Board({
             </ActionIcon>
           </Tooltip>
         )}
+        {!viewOnly && (
+          <Tooltip label="Reset Position">
+            <ActionIcon
+              variant="default"
+              size="lg"
+              onClick={() => resetPosition()}
+            >
+              <IconRestore size="1.3rem" />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Tooltip
           label={t(
             currentTab?.type === "analysis"
@@ -467,6 +518,8 @@ function Board({
       canTakeBack,
       toggleEditingMode,
       toggleOrientation,
+      viewOnly,
+      resetPosition,
       addGame,
     ],
   );
@@ -512,19 +565,105 @@ function Board({
 
   useHotkeys(keyMap.TOGGLE_EVAL_BAR.keys, () => setEvalOpen((e) => !e));
 
-  const square = match(currentNode)
-    .with({ san: "O-O" }, ({ halfMoves }) =>
-      parseSquare(halfMoves % 2 === 1 ? "g1" : "g8"),
-    )
-    .with({ san: "O-O-O" }, ({ halfMoves }) =>
-      parseSquare(halfMoves % 2 === 1 ? "c1" : "c8"),
-    )
-    .otherwise((node) => node.move?.to);
+  const annotationSquare = currentNode.move?.to;
+  const handleAfterMove = useCallback(
+    (orig: BoardKey, dest: BoardKey) => {
+      if (editingMode || !pos) {
+        return;
+      }
 
+      const from = parseSquare(orig)!;
+      const to = parseSquare(dest)!;
+      const piece = pos.board.get(from);
+
+      safeInfo(
+        `[Board] after move orig=${orig} dest=${dest} piece=${
+          piece ? `${piece.color}:${piece.role}` : "(missing)"
+        } fen=${currentNode.fen}`,
+      );
+
+      makeMove({
+        from,
+        to,
+      });
+    },
+    [currentNode.fen, editingMode, makeMove, pos],
+  );
+
+  //if(currentNode.move){
+  //  alert(chessgroundMove(currentNode.move)[0]);
+  //}
   const lastMove =
-    currentNode.move && square !== undefined
-      ? [chessgroundMove(currentNode.move)[0], makeSquare(square)!]
+    currentNode.move
+      ? [
+          chessgroundMove(currentNode.move)[0] as BoardKey,
+          makeSquare(currentNode.move.to)! as BoardKey,
+        ]
       : undefined;
+
+  const chessgroundConfig = useMemo(
+    () => ({
+      setBoardFen,
+      orientation,
+      fen: currentNode.fen,
+      animation: { enabled: !editingMode },
+      coordinates: showCoordinates,
+      movable: {
+        free: editingMode,
+        color: movableColor,
+        dests:
+          editingMode || viewOnly
+            ? undefined
+            : disableVariations && currentNode.children.length > 0
+              ? undefined
+              : dests,
+        showDests,
+        events: {
+          after: handleAfterMove,
+        },
+      },
+      turnColor: turn,
+      check: pos?.isCheck(),
+      lastMove: editingMode ? undefined : lastMove,
+      premovable: {
+        enabled: false,
+      },
+      draggable: {
+        enabled: !viewPawnStructure,
+        deleteOnDropOff: editingMode,
+      },
+      drawable: {
+        enabled: true,
+        visible: true,
+        defaultSnapToValidMove: snapArrows,
+        autoShapes: shapes,
+        onChange: (shapes: DrawShape[]) => {
+          setShapes(shapes);
+        },
+      },
+    }),
+    [
+      setBoardFen,
+      orientation,
+      currentNode.fen,
+      editingMode,
+      showCoordinates,
+      movableColor,
+      viewOnly,
+      disableVariations,
+      currentNode.children.length,
+      dests,
+      showDests,
+      handleAfterMove,
+      turn,
+      pos,
+      lastMove,
+      viewPawnStructure,
+      snapArrows,
+      shapes,
+      setShapes,
+    ],
+  );
 
   return (
     <>
@@ -574,12 +713,12 @@ function Board({
           >
             {currentNode.annotations.length > 0 &&
               currentNode.move &&
-              square !== undefined && (
+              annotationSquare !== undefined && (
                 <Box pl="2.5rem" w="100%" h="100%" pos="absolute">
                   <Box pos="relative" w="100%" h="100%">
                     <AnnotationHint
                       orientation={orientation}
-                      square={square}
+                      square={annotationSquare}
                       annotation={currentNode.annotations[0]}
                     />
                   </Box>
@@ -647,77 +786,7 @@ function Board({
                 orientation={orientation}
               />
 
-              <Chessground
-                setBoardFen={setBoardFen}
-                orientation={orientation}
-                fen={currentNode.fen}
-                animation={{ enabled: !editingMode }}
-                coordinates={showCoordinates}
-                movable={{
-                  free: editingMode,
-                  color: movableColor,
-                  dests:
-                    editingMode || viewOnly
-                      ? undefined
-                      : disableVariations && currentNode.children.length > 0
-                        ? undefined
-                        : dests,
-                  showDests,
-                  events: {
-                    after(orig, dest, metadata) {
-                      if (!editingMode) {
-                        const from = parseSquare(orig)!;
-                        const to = parseSquare(dest)!;
-
-                        if (pos) {
-                          if (
-                            pos.board.get(from)?.role === "pawn" &&
-                            ((dest[1] === "8" && turn === "white") ||
-                              (dest[1] === "1" && turn === "black"))
-                          ) {
-                            if (autoPromote && !metadata.ctrlKey) {
-                              makeMove({
-                                from,
-                                to,
-                                promotion: "queen",
-                              });
-                            } else {
-                              setPendingMove({
-                                from,
-                                to,
-                              });
-                            }
-                          } else {
-                            makeMove({
-                              from,
-                              to,
-                            });
-                          }
-                        }
-                      }
-                    },
-                  },
-                }}
-                turnColor={turn}
-                check={pos?.isCheck()}
-                lastMove={editingMode ? undefined : lastMove}
-                premovable={{
-                  enabled: false,
-                }}
-                draggable={{
-                  enabled: !viewPawnStructure,
-                  deleteOnDropOff: editingMode,
-                }}
-                drawable={{
-                  enabled: true,
-                  visible: true,
-                  defaultSnapToValidMove: snapArrows,
-                  autoShapes: shapes,
-                  onChange: (shapes) => {
-                    setShapes(shapes);
-                  },
-                }}
-              />
+              <Chessground {...chessgroundConfig} />
             </Box>
           </Group>
           <Group justify="space-between" h="2.125rem">
@@ -737,6 +806,12 @@ function Board({
                   color={orientation}
                 />
               </Group>
+            )}
+
+            {pos?.isCheck() && (
+              <Text ta="center" c="red" fw={700}>
+                Check
+              </Text>
             )}
 
             {error && (

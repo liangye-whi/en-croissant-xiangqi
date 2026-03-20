@@ -14,7 +14,7 @@ import { isPawns, parseComment } from "chessops/pgn";
 import { makeSan, parseSan } from "xiangqiops/san";
 import { match } from "ts-pattern";
 import { ANNOTATION_INFO, NAG_INFO, isBasicAnnotation } from "./annotation";
-import { parseSanOrUci, positionFromFen } from "./chessops";
+import { normalizeFen, parseSanOrUci, positionFromFen, toChessopsFen } from "./chessops";
 import { harmonicMean, isPrefix, mean } from "./misc";
 import { INITIAL_SCORE, formatScore, getAccuracy, getCPLoss } from "./score";
 import {
@@ -383,7 +383,7 @@ function innerParsePGN(
   let root = tree.root;
   let prevNode = root;
   root.halfMoves = halfMoves;
-  const setup = parseFen(fen).unwrap();
+  const setup = parseFen(toChessopsFen(fen)).unwrap();
 
   if (halfMoves === 0 && setup.turn === "black") {
     root.halfMoves += 1;
@@ -647,7 +647,7 @@ export type PiecesCount = {
 };
 
 export function getMaterialDiff(fen: string) {
-  const res = parseFen(fen);
+  const res = parseFen(toChessopsFen(fen));
   if (res.isErr) {
     return null;
   }

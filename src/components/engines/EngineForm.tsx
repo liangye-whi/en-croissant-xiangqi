@@ -1,10 +1,14 @@
 import { type UciOptionConfig, commands } from "@/bindings";
-import { type LocalEngine, requiredEngineSettings } from "@/utils/engines";
+import {
+  type LocalEngine,
+  requiredEngineSettings,
+} from "@/utils/engines";
 import { usePlatform } from "@/utils/files";
 import { unwrap } from "@/utils/unwrap";
 import { Button, Input, NumberInput, Text, TextInput } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { open } from "@tauri-apps/plugin-dialog";
+import { info } from "@tauri-apps/plugin-log";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { match } from "ts-pattern";
@@ -40,7 +44,11 @@ export default function EngineForm({
   return (
     <form
       onSubmit={form.onSubmit(async (values) =>
-        onSubmit({ ...values, loaded: true, settings: settings || [] }),
+        onSubmit({
+          ...values,
+          loaded: true,
+          settings: settings || [],
+        }),
       )}
     >
       <FileInput
@@ -54,9 +62,11 @@ export default function EngineForm({
             filters,
           });
           if (!selected) return;
-          config.current = unwrap(
-            await commands.getEngineConfig(selected as string),
-          );
+          void info(`Selected engine path: ${selected}`).catch(() => {});
+          config.current = unwrap(await commands.getEngineConfig(selected as string));
+          void info(
+            `getEngineConfig(${selected}): ${JSON.stringify(config.current, null, 2)}`,
+          ).catch(() => {});
           form.setFieldValue("path", selected as string);
           form.setFieldValue("name", config.current.name);
         }}

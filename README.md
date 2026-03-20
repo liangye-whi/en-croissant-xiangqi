@@ -71,6 +71,18 @@ src-tauri/target/release
 - 与在线棋站、国际象棋开局库、PGN 相关的部分能力仍在重构或清理中。
 - 若某些功能表现仍带有西洋棋命名或行为，通常说明该模块还未完成中国象棋化。
 
+## 最近修复
+
+- Analyse 面板中，本地中国象棋引擎的实时分析链路已经修复。
+- 前后端分析请求统一使用 UCI-Cyclone 风格 FEN：
+  - `board turn - - halfmove fullmove`
+- 前端仍兼容 `xiangqiops` 只接受旧 4 段式 FEN 的限制，在进入解析器前会自动转换。
+- 对本地引擎输出的 `info ... pv ...` 行，后端不再依赖 `vampirc_uci` 解析 `pv`，而是直接从原始输出中提取象棋走法，例如 `h9g7`、`i0h0`。
+- 这项修复解决了：
+  - 首次加载引擎时无法正确显示分析结果
+  - 走子后复用同一引擎进程时，旧搜索尾部输出混入新局面
+  - Pikafish 输出的中国象棋 `pv` 无法被正确解析
+
 ## 致谢
 
 - 原项目 [En Croissant](https://github.com/franciscoBSalgueiro/en-croissant)

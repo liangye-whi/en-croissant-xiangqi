@@ -2,7 +2,7 @@ import { commands } from "@/bindings";
 import { currentTabAtom } from "@/state/atoms";
 import { parsePGN } from "@/utils/chess";
 import { getChesscomGame } from "@/utils/chess.com/api";
-import { chessopsError } from "@/utils/chessops";
+import { chessopsError, normalizeFen, toChessopsFen } from "@/utils/chessops";
 import { createFile } from "@/utils/files";
 import { getLichessGame } from "@/utils/lichess/api";
 import { defaultTree, getGameName } from "@/utils/treeReducer";
@@ -143,14 +143,15 @@ export default function ImportModal({
         };
       });
     } else if (importType === "FEN") {
-      const res = parseFen(fen.trim());
+      const normalizedFen = normalizeFen(fen.trim());
+      const res = parseFen(toChessopsFen(normalizedFen));
       if (res.isErr) {
         setFenError(chessopsError(res.error));
         setLoading(false);
         return;
       }
       setFenError("");
-      const parsedFen = makeFen(res.value);
+      const parsedFen = normalizeFen(makeFen(res.value));
       setCurrentTab((prev) => {
         const tree = defaultTree(parsedFen);
         tree.headers.fen = parsedFen;

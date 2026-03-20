@@ -4,6 +4,7 @@ import {
   type LocalEngine,
   engineSchema,
   requiredEngineSettings,
+  XIANGQI_ENGINES_DIR,
 } from "@/utils/engines";
 import {
   ActionIcon,
@@ -72,7 +73,7 @@ export default function EnginesPage() {
       <AddEngine opened={opened} setOpened={setOpened} />
       <Group align="baseline" py="sm">
         <Title>{t("Engines.Title")}</Title>
-        <OpenFolderButton base="AppDir" folder="engines" />
+        <OpenFolderButton base="AppDir" folder={XIANGQI_ENGINES_DIR} />
       </Group>
       <Group grow flex={1} style={{ overflow: "hidden" }} align="start">
         <ScrollArea h="100%" offsetScrollbars>

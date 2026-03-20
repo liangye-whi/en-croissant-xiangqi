@@ -10,6 +10,9 @@ import useSWR from "swr";
 import { z } from "zod";
 import { unwrap } from "./unwrap";
 
+export const XIANGQI_ENGINES_DIR = "xiangqi-engines";
+export const XIANGQI_ENGINES_FILE = `${XIANGQI_ENGINES_DIR}/engines.json`;
+
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
 
 const goModeSchema: z.ZodSchema<GoMode> = z.union([

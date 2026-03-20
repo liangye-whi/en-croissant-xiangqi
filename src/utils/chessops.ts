@@ -19,11 +19,61 @@ import { type FenError, InvalidFen, makeFen, parseFen } from "xiangqiops/fen";
 import { parseSan } from "xiangqiops/san";
 import { squareFromCoords } from "chessops/util";
 import { match } from "ts-pattern";
+import { INITIAL_FEN } from "xiangqiops/fen";
+
+function normalizeTurn(turn: string): string {
+  switch (turn) {
+    case "black":
+    case "b":
+      return "b";
+    case "white":
+    case "w":
+    case "red":
+      return "w";
+    default:
+      return turn;
+  }
+}
+
+export function normalizeFen(fen: string): string {
+  const parts = fen.trim().split(/\s+/);
+  if (parts.length === 0 || !parts[0]) {
+    return fen.trim();
+  }
+
+  const board = parts[0];
+  const turn = normalizeTurn(parts[1] ?? "w");
+
+  if (parts.length <= 2) {
+    return `${board} ${turn} - - 0 1`;
+  }
+  if (parts.length === 4) {
+    return `${board} ${turn} - - ${parts[2]} ${parts[3]}`;
+  }
+  if (parts.length >= 6) {
+    return `${board} ${turn} ${parts[2]} ${parts[3]} ${parts[4]} ${parts[5]}`;
+  }
+
+  return fen.trim();
+}
+
+export const NORMALIZED_INITIAL_FEN = normalizeFen(INITIAL_FEN);
+
+export function toChessopsFen(fen: string): string {
+  const normalized = normalizeFen(fen);
+  const parts = normalized.split(/\s+/);
+
+  if (parts.length >= 6) {
+    return `${parts[0]} ${parts[1]} ${parts[4]} ${parts[5]}`;
+  }
+
+  return normalized;
+}
 
 export function positionFromFen(
   fen: string,
 ): [Chess, null] | [null, FenError | PositionError] {
-  const [setup, error] = parseFen(fen).unwrap(
+  const [setup, error] = parseFen(toChessopsFen(fen)).unwrap(
     (v) => [v, null],
     (e) => [null, e],
   );
@@ -38,14 +88,14 @@ export function positionFromFen(
 }
 
 export function swapMove(fen: string, color?: Color) {
-  const setup = parseFen(fen).unwrap();
+  const setup = parseFen(toChessopsFen(fen)).unwrap();
   if (color) {
     setup.turn = color;
   } else {
     setup.turn = setup.turn === "white" ? "black" : "white";
   }
 
-  return makeFen(setup);
+  return normalizeFen(makeFen(setup));
 }
 
 export function squareToCoordinates(

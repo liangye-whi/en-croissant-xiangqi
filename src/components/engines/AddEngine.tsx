@@ -4,6 +4,7 @@ import {
   type LocalEngine,
   type RemoteEngine,
   requiredEngineSettings,
+  XIANGQI_ENGINES_DIR,
   useDefaultEngines,
 } from "@/utils/engines";
 import { usePlatform } from "@/utils/files";
@@ -207,11 +208,11 @@ function EngineCard({
       setInProgress(true);
       let path = await resolve(
         await appDataDir(),
-        "engines",
+        XIANGQI_ENGINES_DIR,
         `${url.slice(url.lastIndexOf("/") + 1)}`,
       );
       if (url.endsWith(".zip") || url.endsWith(".tar")) {
-        path = await resolve(await appDataDir(), "engines");
+        path = await resolve(await appDataDir(), XIANGQI_ENGINES_DIR);
       }
       await commands.downloadFile(`engine_${id}`, url, path, null, null, null);
       let appDataDirPath = await appDataDir();
@@ -220,7 +221,7 @@ function EngineCard({
       }
       const enginePath = await join(
         appDataDirPath,
-        "engines",
+        XIANGQI_ENGINES_DIR,
         ...engine.path.split("/"),
       );
       await commands.setFileAsExecutable(enginePath);

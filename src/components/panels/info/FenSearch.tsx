@@ -1,5 +1,5 @@
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import { chessopsError } from "@/utils/chessops";
+import { chessopsError, normalizeFen, toChessopsFen } from "@/utils/chessops";
 import { InputBase } from "@mantine/core";
 import { type FenError, parseFen } from "xiangqiops/fen";
 import { useContext, useEffect, useState } from "react";
@@ -22,7 +22,8 @@ export default function FenSearch({ currentFen }: { currentFen: string }) {
       return;
     }
 
-    const res = parseFen(trimmedFen);
+    const normalizedFen = normalizeFen(trimmedFen);
+    const res = parseFen(toChessopsFen(normalizedFen));
     if (res.isErr) {
       setError(res.error);
       return;
@@ -30,7 +31,7 @@ export default function FenSearch({ currentFen }: { currentFen: string }) {
 
     setHeaders({
       ...headers,
-      fen: trimmedFen,
+      fen: normalizedFen,
       variant: undefined,
     });
     setError(undefined);

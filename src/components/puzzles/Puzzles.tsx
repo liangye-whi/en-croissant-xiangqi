@@ -9,7 +9,7 @@ import {
   selectedPuzzleDbAtom,
   tabsAtom,
 } from "@/state/atoms";
-import { positionFromFen } from "@/utils/chessops";
+import { positionFromFen, toChessopsFen } from "@/utils/chessops";
 import {
   type Completion,
   type Puzzle,
@@ -287,7 +287,9 @@ function Puzzles({ id }: { id: string }) {
                         fen: puzzles[currentPuzzle]?.fen,
                         orientation:
                           Chess.fromSetup(
-                            parseFen(puzzles[currentPuzzle].fen).unwrap(),
+                            parseFen(
+                              toChessopsFen(puzzles[currentPuzzle].fen),
+                            ).unwrap(),
                           ).unwrap().turn === "white"
                             ? "black"
                             : "white",

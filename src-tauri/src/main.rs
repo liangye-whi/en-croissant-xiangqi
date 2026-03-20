@@ -55,6 +55,9 @@ use crate::{
 };
 use tokio::sync::{RwLock, Semaphore};
 
+const XIANGQI_ENGINES_DIR: &str = "xiangqi-engines";
+const XIANGQI_ENGINES_FILE: &str = "xiangqi-engines/engines.json";
+
 pub type GameData = (
     i32,
     i32,
@@ -86,7 +89,7 @@ pub struct AppState {
 }
 
 const REQUIRED_DIRS: &[(BaseDirectory, &str)] = &[
-    (BaseDirectory::AppData, "engines"),
+    (BaseDirectory::AppData, XIANGQI_ENGINES_DIR),
     (BaseDirectory::AppData, "db"),
     (BaseDirectory::AppData, "presets"),
     (BaseDirectory::AppData, "puzzles"),
@@ -95,7 +98,7 @@ const REQUIRED_DIRS: &[(BaseDirectory, &str)] = &[
 ];
 
 const REQUIRED_FILES: &[(BaseDirectory, &str, &str)] =
-    &[(BaseDirectory::AppData, "engines/engines.json", "[]")];
+    &[(BaseDirectory::AppData, XIANGQI_ENGINES_FILE, "[]")];
 
 #[tauri::command]
 #[specta::specta]

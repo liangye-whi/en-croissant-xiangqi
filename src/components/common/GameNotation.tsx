@@ -2,6 +2,7 @@ import { Comment } from "@/components/common/Comment";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
 import { currentInvisibleAtom } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
+import { NORMALIZED_INITIAL_FEN, normalizeFen } from "@/utils/chessops";
 import { type TreeNode, getNodeAtPath } from "@/utils/treeReducer";
 import {
   ActionIcon,
@@ -26,7 +27,6 @@ import {
   IconMinus,
   IconPlus,
 } from "@tabler/icons-react";
-import { INITIAL_FEN } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { memo, useContext, useEffect, useRef, useState } from "react";
@@ -48,7 +48,7 @@ function GameNotation({ topBar }: { topBar?: boolean }) {
 
   useEffect(() => {
     if (viewport.current) {
-      if (currentFen === INITIAL_FEN) {
+      if (normalizeFen(currentFen) === NORMALIZED_INITIAL_FEN) {
         viewport.current.scrollTo({ top: 0, behavior: "smooth" });
       } else if (targetRef.current) {
         viewport.current.scrollTo({

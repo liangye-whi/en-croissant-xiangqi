@@ -1,9 +1,8 @@
 import type { Outcome, Score } from "@/bindings";
 import type { DrawShape } from "xiangqiground/draw";
 import type { Move } from "xiangqiops";
-import { INITIAL_FEN } from "xiangqiops/fen";
 import type { Annotation } from "./annotation";
-import { positionFromFen } from "./chessops";
+import { NORMALIZED_INITIAL_FEN, normalizeFen, positionFromFen } from "./chessops";
 
 export interface TreeState {
   root: TreeNode;
@@ -74,13 +73,14 @@ export function countMainPly(node: TreeNode): number {
 }
 
 export function defaultTree(fen?: string): TreeState {
-  const [pos] = positionFromFen(fen ?? INITIAL_FEN);
+  const normalizedFen = normalizeFen(fen ?? NORMALIZED_INITIAL_FEN);
+  const [pos] = positionFromFen(normalizedFen);
 
   return {
     dirty: false,
     position: [],
     root: {
-      fen: fen?.trim() ?? INITIAL_FEN,
+      fen: normalizedFen,
       move: null,
       san: null,
       children: [],
@@ -93,7 +93,7 @@ export function defaultTree(fen?: string): TreeState {
     },
     headers: {
       id: 0,
-      fen: fen ?? INITIAL_FEN,
+      fen: normalizedFen,
       black: "",
       white: "",
       result: "*",

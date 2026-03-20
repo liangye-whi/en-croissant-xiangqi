@@ -9,7 +9,12 @@ import {
 } from "@/state/atoms";
 import { getVariationLine } from "@/utils/chess";
 import { getBestMoves as chessdbGetBestMoves } from "@/utils/chessdb/api";
-import { positionFromFen, swapMove } from "@/utils/chessops";
+import {
+  normalizeFen,
+  NORMALIZED_INITIAL_FEN,
+  positionFromFen,
+  swapMove,
+} from "@/utils/chessops";
 import {
   type Engine,
   type LocalEngine,
@@ -19,7 +24,7 @@ import {
 import { getBestMoves as lichessGetBestMoves } from "@/utils/lichess/api";
 import { useThrottledEffect } from "@/utils/misc";
 import { parseUci } from "xiangqiops";
-import { INITIAL_FEN, makeFen } from "xiangqiops/fen";
+import { makeFen } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { startTransition, useContext, useEffect, useMemo } from "react";
@@ -53,17 +58,20 @@ function EvalListener() {
   }
 
   const isGameOver = pos?.isEnd() ?? false;
-  const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : null), [pos]);
+  const finalFen = useMemo(
+    () => (pos ? normalizeFen(makeFen(pos.toSetup())) : null),
+    [pos],
+  );
 
   const { searchingFen, searchingMoves } = useMemo(
     () =>
       match(threat as boolean)
         .with(true, () => ({
-          searchingFen: swapMove(finalFen || INITIAL_FEN),
+          searchingFen: swapMove(finalFen || NORMALIZED_INITIAL_FEN),
           searchingMoves: [],
         }))
         .with(false, () => ({
-          searchingFen: fen,
+          searchingFen: normalizeFen(fen),
           searchingMoves: moves,
         }))
         .exhaustive(),
@@ -130,13 +138,32 @@ function EngineListener({
     if (!settings.enabled) return;
     const unlisten = events.bestMovesPayload.listen(({ payload }) => {
       const ev = payload.bestLines;
-      if (
+      const matches =
         payload.engine === engine.name &&
         payload.tab === activeTab &&
         payload.fen === searchingFen &&
         equal(payload.moves, searchingMoves) &&
         settings.enabled &&
-        !isGameOver
+        !isGameOver;
+
+      console.debug("[analysis] bestMovesPayload received", {
+        engineName: engine.name,
+        activeTab,
+        searchingFen,
+        searchingMoves,
+        payloadEngine: payload.engine,
+        payloadTab: payload.tab,
+        payloadFen: payload.fen,
+        payloadMoves: payload.moves,
+        payloadProgress: payload.progress,
+        payloadBestLinesLength: ev.length,
+        enabled: settings.enabled,
+        isGameOver,
+        matches,
+      });
+
+      if (
+        matches
       ) {
         startTransition(() => {
           setEngineVariation((prev) => {
@@ -151,6 +178,23 @@ function EngineListener({
           });
           setProgress(payload.progress);
           setScore(ev[0].score);
+        });
+      } else {
+        console.warn("[analysis] bestMovesPayload filtered out", {
+          engineName: engine.name,
+          activeTab,
+          searchingFen,
+          searchingMoves,
+          payloadEngine: payload.engine,
+          payloadTab: payload.tab,
+          payloadFen: payload.fen,
+          payloadMoves: payload.moves,
+          enabled: settings.enabled,
+          isGameOver,
+          engineMatches: payload.engine === engine.name,
+          tabMatches: payload.tab === activeTab,
+          fenMatches: payload.fen === searchingFen,
+          movesMatch: equal(payload.moves, searchingMoves),
         });
       }
     });
@@ -198,14 +242,38 @@ function EngineListener({
           if (chess960 && !options.find((o) => o.name === "UCI_Chess960")) {
             options.push({ name: "UCI_Chess960", value: "true" });
           }
+          console.info("[analysis] requesting best moves", {
+            engineName: engine.name,
+            engineType: engine.type,
+            activeTab,
+            go: settings.go,
+            fen: searchingFen,
+            moves: searchingMoves,
+            options,
+            chess960,
+          });
           getBestMoves(activeTab!, settings.go, {
             moves: searchingMoves,
             fen: searchingFen,
             extraOptions: options,
           }).then((moves) => {
+            console.info("[analysis] getBestMoves resolved", {
+              engineName: engine.name,
+              activeTab,
+              fen: searchingFen,
+              moves: searchingMoves,
+              returnedNull: moves == null,
+            });
             if (moves) {
-              alert(moves);
               const [progress, bestMoves] = moves;
+              console.info("[analysis] getBestMoves returned immediate result", {
+                engineName: engine.name,
+                activeTab,
+                fen: searchingFen,
+                moves: searchingMoves,
+                progress,
+                bestMovesLength: bestMoves.length,
+              });
               setEngineVariation((prev) => {
                 const newMap = new Map(prev);
                 newMap.set(
@@ -216,10 +284,22 @@ function EngineListener({
               });
               setProgress(progress);
             }
+          }).catch((error) => {
+            console.error("[analysis] getBestMoves failed", {
+              engineName: engine.name,
+              activeTab,
+              fen: searchingFen,
+              moves: searchingMoves,
+              error,
+            });
           });
         }
       } else {
         if (engine.type === "local") {
+          console.info("[analysis] stopping engine because disabled", {
+            engineName: engine.name,
+            activeTab,
+          });
           stopEngine(engine, activeTab!);
         }
       }

@@ -5,6 +5,7 @@ import {
   type Engine,
   type EngineSettings,
   engineSchema,
+  XIANGQI_ENGINES_FILE,
 } from "@/utils/engines";
 import {
   type LichessGamesOptions,
@@ -17,7 +18,7 @@ import { type Tab, genID, tabSchema } from "@/utils/tabs";
 import type { MantineColor } from "@mantine/core";
 
 import type { OpponentSettings } from "@/components/boards/BoardGame";
-import { positionFromFen, swapMove } from "@/utils/chessops";
+import { normalizeFen, positionFromFen, swapMove } from "@/utils/chessops";
 import type { SuccessDatabaseInfo } from "@/utils/db";
 import { getWinChance, normalizeScore } from "@/utils/score";
 import { parseUci } from "xiangqiops";
@@ -49,9 +50,9 @@ const zodArray = <S>(itemSchema: z.ZodType<S>) => {
 };
 
 export const enginesAtom = atomWithStorage<Engine[]>(
-  "engines/engines.json",
+  XIANGQI_ENGINES_FILE,
   [],
-  createAsyncZodStorage(zodArray(engineSchema), fileStorage),
+  createAsyncZodStorage(zodArray(engineSchema) as z.ZodType<Engine[]>, fileStorage),
 );
 
 const loadableEnginesAtom = loadable(enginesAtom);
@@ -433,18 +434,18 @@ export const bestMovesFamily = atomFamily(
           engineMovesFamily({ tab, engine: engine.name }),
         );
         const [pos] = positionFromFen(fen);
-        let finalFen = INITIAL_FEN;
+        let finalFen = normalizeFen(INITIAL_FEN);
         if (pos) {
           for (const move of gameMoves) {
             //alert(`${move.from},${move.to}`);
             const m = parseUci(move);
             pos.play(m!);
           }
-          finalFen = makeFen(pos.toSetup());
+          finalFen = normalizeFen(makeFen(pos.toSetup()));
         }
         const moves =
           engineMoves.get(`${swapMove(finalFen)}:`) ||
-          engineMoves.get(`${fen}:${gameMoves.join(",")}`);
+          engineMoves.get(`${normalizeFen(fen)}:${gameMoves.join(",")}`);
         if (moves && moves.length > 0) {
           const bestWinChange = getWinChance(
             normalizeScore(moves[0].score.value, pos?.turn || "white"),

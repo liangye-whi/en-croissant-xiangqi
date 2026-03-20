@@ -1,14 +1,16 @@
-use std::{fmt::Display, path::PathBuf, process::Stdio, sync::Arc, time::Instant};
+use std::{
+    fmt::Display,
+    path::PathBuf,
+    process::Stdio,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use derivative::Derivative;
 use governor::{Quota, RateLimiter};
 use log::{error, info};
 use nonzero_ext::*;
 use serde::{Deserialize, Serialize};
-use shakmaty::{
-    fen::Fen, san::SanPlus, uci::UciMove, ByColor, CastlingMode, Chess, Color, EnPassantMode,
-    Position, Role,
-};
 use specta::Type;
 use tauri_specta::Event;
 use tokio::{
@@ -43,6 +45,7 @@ pub struct EngineProcess {
     last_best_moves: Vec<BestMoves>,
     last_progress: f32,
     options: EngineOptions,
+    requested_options: EngineOptions,
     go_mode: GoMode,
     running: bool,
     real_multipv: u16,
@@ -103,6 +106,7 @@ impl EngineProcess {
                 last_progress: 0.0,
                 logs,
                 options: EngineOptions::default(),
+                requested_options: EngineOptions::default(),
                 real_multipv: 0,
                 go_mode: GoMode::Infinite,
                 running: false,
@@ -117,6 +121,7 @@ impl EngineProcess {
         T: Display,
     {
         let msg = format!("setoption name {} value {}\n", name, value);
+        info!("[analysis] gui -> engine: {}", msg.trim_end());
         self.stdin.write_all(msg.as_bytes()).await?;
         self.logs.push(EngineLog::Gui(msg));
 
@@ -124,24 +129,16 @@ impl EngineProcess {
     }
 
     async fn set_options(&mut self, options: EngineOptions) -> Result<(), Error> {
-        let fen: Fen = options.fen.parse()?;
-        let mut pos: Chess = match fen.into_position(CastlingMode::Chess960) {
-            Ok(p) => p,
-            Err(e) => e.ignore_too_much_material()?,
-        };
-        for m in &options.moves {
-            let uci = UciMove::from_ascii(m.as_bytes())?;
-            let mv = uci.to_move(&pos)?;
-            pos.play_unchecked(&mv);
-        }
+        let normalized_fen = normalize_fen(&options.fen);
         let multipv = options
             .extra_options
             .iter()
             .find(|x| x.name == "MultiPV")
             .map(|x| x.value.parse().unwrap_or(1))
-            .unwrap_or(1);
+            .unwrap_or(1)
+            .max(1);
 
-        self.real_multipv = multipv.min(pos.legal_moves().len() as u16);
+        self.real_multipv = multipv;
 
         for option in &options.extra_options {
             if !self.options.extra_options.contains(option) {
@@ -149,25 +146,38 @@ impl EngineProcess {
             }
         }
 
-        if options.fen != self.options.fen || options.moves != self.options.moves {
-            self.set_position(&options.fen, &options.moves).await?;
+        if normalized_fen != self.options.fen || options.moves != self.options.moves {
+            self.set_position(&normalized_fen, &options.moves).await?;
         }
         self.last_depth = 0;
-        self.options = options.clone();
+        self.options = EngineOptions {
+            fen: normalized_fen,
+            ..options.clone()
+        };
         self.best_moves.clear();
         self.last_best_moves.clear();
         Ok(())
     }
 
+    fn set_requested_options(&mut self, options: EngineOptions) {
+        self.requested_options = EngineOptions {
+            fen: normalize_fen(&options.fen),
+            moves: options.moves,
+            extra_options: options.extra_options,
+        };
+    }
+
     async fn set_position(&mut self, fen: &str, moves: &Vec<String>) -> Result<(), Error> {
+        let fen = normalize_fen(fen);
         let msg = if moves.is_empty() {
             format!("position fen {}\n", fen)
         } else {
             format!("position fen {} moves {}\n", fen, moves.join(" "))
         };
 
+        info!("[analysis] gui -> engine: {}", msg.trim_end());
         self.stdin.write_all(msg.as_bytes()).await?;
-        self.options.fen = fen.to_string();
+        self.options.fen = fen;
         self.options.moves = moves.clone();
         self.logs.push(EngineLog::Gui(msg));
         Ok(())
@@ -192,6 +202,7 @@ impl EngineProcess {
             }
             GoMode::Infinite => "go infinite\n".to_string(),
         };
+        info!("[analysis] gui -> engine: {}", msg.trim_end());
         self.stdin.write_all(msg.as_bytes()).await?;
         self.logs.push(EngineLog::Gui(msg));
         self.running = true;
@@ -200,6 +211,7 @@ impl EngineProcess {
     }
 
     async fn stop(&mut self) -> Result<(), Error> {
+        info!("[analysis] gui -> engine: stop");
         self.stdin.write_all(b"stop\n").await?;
         self.logs.push(EngineLog::Gui("stop\n".to_string()));
         self.running = false;
@@ -207,6 +219,7 @@ impl EngineProcess {
     }
 
     async fn kill(&mut self) -> Result<(), Error> {
+        info!("[analysis] gui -> engine: quit");
         self.stdin.write_all(b"quit\n").await?;
         self.logs.push(EngineLog::Gui("quit\n".to_string()));
         self.running = false;
@@ -264,35 +277,59 @@ fn invert_score(score: Score) -> Score {
     }
 }
 
+fn is_black_turn_in_fen(fen: &str) -> bool {
+    matches!(fen.split_whitespace().nth(1), Some("b" | "black"))
+}
+
+fn normalize_turn(turn: &str) -> &str {
+    match turn {
+        "black" | "b" => "b",
+        "white" | "w" | "red" => "w",
+        other => other,
+    }
+}
+
+fn normalize_fen(fen: &str) -> String {
+    let parts: Vec<&str> = fen.split_whitespace().collect();
+    if parts.is_empty() {
+        return fen.trim().to_string();
+    }
+
+    let board = parts[0];
+    let turn = parts.get(1).copied().map(normalize_turn).unwrap_or("w");
+
+    match parts.len() {
+        1 | 2 => format!("{board} {turn} - - 0 1"),
+        4 => format!("{board} {turn} - - {} {}", parts[2], parts[3]),
+        len if len >= 6 => format!(
+            "{board} {turn} {} {} {} {}",
+            parts[2], parts[3], parts[4], parts[5]
+        ),
+        _ => fen.trim().to_string(),
+    }
+}
+
+fn extract_pv_from_info_line(line: &str) -> Vec<String> {
+    let mut parts = line.split_whitespace();
+
+    while let Some(part) = parts.next() {
+        if part == "pv" {
+            return parts.map(|mv| mv.to_string()).collect();
+        }
+    }
+
+    Vec::new()
+}
+
 fn parse_uci_attrs(
     attrs: Vec<UciInfoAttribute>,
-    fen: &Fen,
-    moves: &Vec<String>,
+    fen: &str,
+    raw_line: &str,
 ) -> Result<BestMoves, Error> {
     let mut best_moves = BestMoves::default();
 
-    let mut pos: Chess = match fen.clone().into_position(CastlingMode::Chess960) {
-        Ok(p) => p,
-        Err(e) => e.ignore_too_much_material()?,
-    };
-    for m in moves {
-        let uci = UciMove::from_ascii(m.as_bytes())?;
-        let mv = uci.to_move(&pos)?;
-        pos.play_unchecked(&mv);
-    }
-    let turn = pos.turn();
-
     for a in attrs {
         match a {
-            UciInfoAttribute::Pv(m) => {
-                for mv in m {
-                    let uci: UciMove = mv.to_string().parse()?;
-                    let m = uci.to_move(&pos)?;
-                    let san = SanPlus::from_move_and_play_unchecked(&mut pos, &m);
-                    best_moves.san_moves.push(san.to_string());
-                    best_moves.uci_moves.push(uci.to_string());
-                }
-            }
             UciInfoAttribute::Nps(nps) => {
                 best_moves.nps = nps as u32;
             }
@@ -312,11 +349,18 @@ fn parse_uci_attrs(
         }
     }
 
+    // Pikafish emits xiangqi PV moves like "h9g7" that vampirc_uci does not
+    // reliably surface via UciInfoAttribute::Pv, so we extract the raw PV tail
+    // directly from the original info line.
+    let pv_moves = extract_pv_from_info_line(raw_line);
+    best_moves.san_moves = pv_moves.clone();
+    best_moves.uci_moves = pv_moves;
+
     if best_moves.san_moves.is_empty() {
         return Err(Error::NoMovesFound);
     }
 
-    if turn == Color::Black {
+    if is_black_turn_in_fen(fen) {
         best_moves.score = invert_score(best_moves.score);
     }
 
@@ -347,8 +391,9 @@ fn get_handles(child: &mut Child) -> Result<(ChildStdin, Lines<BufReader<ChildSt
 }
 
 async fn send_command(stdin: &mut ChildStdin, command: impl AsRef<str>) {
+    let command = command.as_ref();
     stdin
-        .write_all(command.as_ref().as_bytes())
+        .write_all(command.as_bytes())
         .await
         .expect("Failed to write command");
 }
@@ -463,6 +508,14 @@ pub async fn get_best_moves(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<(f32, Vec<BestMoves>)>, Error> {
+    info!(
+        "get_best_moves: id={}, engine={}, tab={}, fen={}, moves_count={}",
+        id,
+        engine,
+        tab,
+        options.fen,
+        options.moves.len()
+    );
     let path = PathBuf::from(&engine);
 
     let key = (tab.clone(), engine.clone());
@@ -472,11 +525,30 @@ pub async fn get_best_moves(
             let process = state.engine_processes.get_mut(&key).unwrap();
             let mut process = process.lock().await;
             if options == process.options && go_mode == process.go_mode && process.running {
+                info!(
+                    "[analysis] get_best_moves cache hit: id={}, engine={}, tab={}, fen={}, moves={:?}, progress={}, best_lines={}",
+                    id,
+                    engine,
+                    tab,
+                    options.fen,
+                    options.moves,
+                    process.last_progress,
+                    process.last_best_moves.len()
+                );
                 return Ok(Some((
                     process.last_progress,
                     process.last_best_moves.clone(),
                 )));
             }
+            info!(
+                "[analysis] get_best_moves reusing process: id={}, engine={}, tab={}, fen={}, moves={:?}",
+                id,
+                engine,
+                tab,
+                options.fen,
+                options.moves
+            );
+            process.set_requested_options(options.clone());
             process.stop().await?;
         }
         // give time for engine to stop and process previous lines
@@ -487,10 +559,27 @@ pub async fn get_best_moves(
             process.set_options(options.clone()).await?;
             process.go(&go_mode).await?;
         }
+        info!(
+            "[analysis] get_best_moves scheduled async analysis on existing process: id={}, engine={}, tab={}, fen={}, moves={:?}",
+            id,
+            engine,
+            tab,
+            options.fen,
+            options.moves
+        );
         return Ok(None);
     }
 
+    info!(
+        "[analysis] get_best_moves starting new engine process: id={}, engine={}, tab={}, fen={}, moves={:?}",
+        id,
+        engine,
+        tab,
+        options.fen,
+        options.moves
+    );
     let (mut process, mut reader) = EngineProcess::new(path).await?;
+    process.set_requested_options(options.clone());
     process.set_options(options.clone()).await?;
     process.go(&go_mode).await?;
 
@@ -501,12 +590,23 @@ pub async fn get_best_moves(
     let lim = RateLimiter::direct(Quota::per_second(nonzero!(5u32)));
 
     while let Some(line) = reader.next_line().await? {
+        info!("[analysis] engine -> gui: {}", line);
         let mut proc = process.lock().await;
         match parse_one(&line) {
             UciMessage::Info(attrs) => {
-                if let Ok(best_moves) =
-                    parse_uci_attrs(attrs, &proc.options.fen.parse()?, &proc.options.moves)
-                {
+                info!("[analysis] parsed info message");
+                let best_moves = parse_uci_attrs(attrs, &proc.options.fen, &line);
+                match best_moves {
+                    Ok(best_moves) => {
+                        info!(
+                            "[analysis] parse_uci_attrs ok: fen={}, moves={:?}, depth={}, multipv={}, nodes={}, pv_len={}",
+                            proc.options.fen,
+                            proc.options.moves,
+                            best_moves.depth,
+                            best_moves.multipv,
+                            best_moves.nodes,
+                            best_moves.uci_moves.len()
+                        );
                     let multipv = best_moves.multipv;
                     let cur_depth = best_moves.depth;
                     let cur_nodes = best_moves.nodes;
@@ -517,6 +617,37 @@ pub async fn get_best_moves(
                                 && cur_depth >= proc.last_depth
                                 && lim.check().is_ok()
                             {
+                                if !proc.running
+                                    || proc.options.fen != proc.requested_options.fen
+                                    || proc.options.moves != proc.requested_options.moves
+                                {
+                                    info!(
+                                        "[analysis] dropped stale info payload: id={}, tab={}, running={}, fen={}, moves={:?}, requested_fen={}, requested_moves={:?}, depth={}, last_depth={}, best_lines={}",
+                                        id,
+                                        tab,
+                                        proc.running,
+                                        proc.options.fen,
+                                        proc.options.moves,
+                                        proc.requested_options.fen,
+                                        proc.requested_options.moves,
+                                        cur_depth,
+                                        proc.last_depth,
+                                        proc.best_moves.len()
+                                    );
+                                    proc.best_moves.clear();
+                                    continue;
+                                }
+                                info!(
+                                    "[analysis] accepted info payload: id={}, tab={}, fen={}, moves={:?}, requested_fen={}, requested_moves={:?}, depth={}, best_lines={}",
+                                    id,
+                                    tab,
+                                    proc.options.fen,
+                                    proc.options.moves,
+                                    proc.requested_options.fen,
+                                    proc.requested_options.moves,
+                                    cur_depth,
+                                    proc.best_moves.len()
+                                );
                                 let progress = match proc.go_mode {
                                     GoMode::Depth(depth) => {
                                         (cur_depth as f64 / depth as f64) * 100.0
@@ -540,6 +671,16 @@ pub async fn get_best_moves(
                                     progress,
                                 }
                                 .emit(&app)?;
+                                info!(
+                                    "[analysis] emitted best_moves info payload: id={}, tab={}, fen={}, moves={:?}, progress={}, best_lines={}, depth={}",
+                                    id,
+                                    tab,
+                                    proc.options.fen,
+                                    proc.options.moves,
+                                    progress,
+                                    proc.best_moves.len(),
+                                    cur_depth
+                                );
                                 proc.last_depth = cur_depth;
                                 proc.last_best_moves = proc.best_moves.clone();
                                 proc.last_progress = progress as f32;
@@ -547,9 +688,48 @@ pub async fn get_best_moves(
                             proc.best_moves.clear();
                         }
                     }
+                    }
+                    Err(err) => {
+                        info!(
+                            "[analysis] parse_uci_attrs failed: fen={}, moves={:?}, error={:?}",
+                            proc.options.fen,
+                            proc.options.moves,
+                            err
+                        );
+                    }
                 }
             }
             UciMessage::BestMove { .. } => {
+                info!("[analysis] parsed bestmove message");
+                if !proc.running
+                    || proc.options.fen != proc.requested_options.fen
+                    || proc.options.moves != proc.requested_options.moves
+                {
+                    info!(
+                        "[analysis] dropped stale final payload: id={}, tab={}, running={}, fen={}, moves={:?}, requested_fen={}, requested_moves={:?}, last_depth={}, best_lines={}",
+                        id,
+                        tab,
+                        proc.running,
+                        proc.options.fen,
+                        proc.options.moves,
+                        proc.requested_options.fen,
+                        proc.requested_options.moves,
+                        proc.last_depth,
+                        proc.last_best_moves.len()
+                    );
+                    continue;
+                }
+                info!(
+                    "[analysis] accepted final payload: id={}, tab={}, fen={}, moves={:?}, requested_fen={}, requested_moves={:?}, last_depth={}, best_lines={}",
+                    id,
+                    tab,
+                    proc.options.fen,
+                    proc.options.moves,
+                    proc.requested_options.fen,
+                    proc.requested_options.moves,
+                    proc.last_depth,
+                    proc.last_best_moves.len()
+                );
                 BestMovesPayload {
                     best_lines: proc.last_best_moves.clone(),
                     engine: id.clone(),
@@ -559,9 +739,19 @@ pub async fn get_best_moves(
                     progress: 100.0,
                 }
                 .emit(&app)?;
+                info!(
+                    "[analysis] emitted best_moves final payload: id={}, tab={}, fen={}, moves={:?}, best_lines={}",
+                    id,
+                    tab,
+                    proc.options.fen,
+                    proc.options.moves,
+                    proc.last_best_moves.len()
+                );
                 proc.last_progress = 100.0;
             }
-            _ => {}
+            other => {
+                info!("[analysis] parsed non-info message: {:?}", other);
+            }
         }
         proc.logs.push(EngineLog::Engine(line));
     }
@@ -609,38 +799,31 @@ pub async fn analyze_game(
     let mut analysis: Vec<MoveAnalysis> = Vec::new();
 
     let (mut proc, mut reader) = EngineProcess::new(path).await?;
-
-    let fen = Fen::from_ascii(options.fen.as_bytes())?;
-
-    let mut chess: Chess = fen.clone().into_position(CastlingMode::Chess960)?;
-    let mut fens: Vec<(Fen, Vec<String>, bool)> = vec![(fen, vec![], false)];
-
-    options.moves.iter().enumerate().for_each(|(i, m)| {
-        let uci = UciMove::from_ascii(m.as_bytes()).unwrap();
-        let m = uci.to_move(&chess).unwrap();
-        let previous_pos = chess.clone();
-        chess.play_unchecked(&m);
-        let current_pos = chess.clone();
-        if !chess.is_game_over() {
-            let prev_eval = naive_eval(&previous_pos);
-            let cur_eval = -naive_eval(&current_pos);
-            fens.push((
-                Fen::from_position(current_pos, EnPassantMode::Legal),
-                options.moves.clone().into_iter().take(i + 1).collect(),
-                prev_eval > cur_eval + 100,
-            ));
-        }
-    });
+    let normalized_fen = normalize_fen(&options.fen);
+    let mut positions: Vec<(String, Vec<String>, bool)> = vec![(normalized_fen, vec![], false)];
+    positions.extend(
+        options
+            .moves
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                (
+                    normalize_fen(&options.fen),
+                    options.moves.iter().take(i + 1).cloned().collect(),
+                    false,
+                )
+            }),
+    );
 
     if options.reversed {
-        fens.reverse();
+        positions.reverse();
     }
 
     let mut novelty_found = false;
 
-    for (i, (_, moves, _)) in fens.iter().enumerate() {
+    for (i, (fen, moves, _)) in positions.iter().enumerate() {
         ReportProgress {
-            progress: (i as f64 / fens.len() as f64) * 100.0,
+            progress: (i as f64 / positions.len() as f64) * 100.0,
             id: id.clone(),
             finished: false,
         }
@@ -661,7 +844,7 @@ pub async fn analyze_game(
         }
 
         proc.set_options(EngineOptions {
-            fen: options.fen.clone(),
+            fen: fen.clone(),
             moves: moves.clone(),
             extra_options,
         })
@@ -673,9 +856,7 @@ pub async fn analyze_game(
         while let Ok(Some(line)) = reader.next_line().await {
             match parse_one(&line) {
                 UciMessage::Info(attrs) => {
-                    if let Ok(best_moves) =
-                        parse_uci_attrs(attrs, &proc.options.fen.parse()?, moves)
-                    {
+                    if let Ok(best_moves) = parse_uci_attrs(attrs, &proc.options.fen, &line) {
                         let multipv = best_moves.multipv;
                         let cur_depth = best_moves.depth;
                         if multipv as usize == proc.best_moves.len() + 1 {
@@ -704,18 +885,16 @@ pub async fn analyze_game(
 
     if options.reversed {
         analysis.reverse();
-        fens.reverse();
+        positions.reverse();
     }
 
     for (i, analysis) in analysis.iter_mut().enumerate() {
-        let fen = &fens[i].0;
-        // let query = PositionQuery::exact_from_fen(&fen.to_string())?;
         let query = PositionQueryJs {
-            fen: fen.to_string(),
+            fen: positions[i].0.clone(),
             type_: "exact".to_string(),
         };
 
-        analysis.is_sacrifice = fens[i].2;
+        analysis.is_sacrifice = positions[i].2;
         if options.annotate_novelties && !novelty_found {
             if let Some(reference) = options.reference_db.clone() {
                 analysis.novelty = !is_position_in_db(
@@ -741,145 +920,6 @@ pub async fn analyze_game(
     Ok(analysis)
 }
 
-fn count_material(position: &Chess) -> i32 {
-    if position.is_checkmate() {
-        return -10000;
-    }
-    let material: ByColor<i32> = position.board().material().map(|p| {
-        p.pawn as i32 * piece_value(Role::Pawn)
-            + p.knight as i32 * piece_value(Role::Knight)
-            + p.bishop as i32 * piece_value(Role::Bishop)
-            + p.rook as i32 * piece_value(Role::Rook)
-            + p.queen as i32 * piece_value(Role::Queen)
-    });
-    if position.turn() == Color::White {
-        material.white - material.black
-    } else {
-        material.black - material.white
-    }
-}
-
-fn piece_value(role: Role) -> i32 {
-    match role {
-        Role::Pawn => 90,
-        Role::Knight => 300,
-        Role::Bishop => 300,
-        Role::Rook => 500,
-        Role::Queen => 1000,
-        _ => 0,
-    }
-}
-
-fn qsearch(position: &Chess, mut alpha: i32, beta: i32) -> i32 {
-    let stand_pat = count_material(position);
-
-    if stand_pat >= beta {
-        return beta;
-    }
-    if alpha < stand_pat {
-        alpha = stand_pat;
-    }
-    let legal_moves = position.legal_moves();
-    let mut captures: Vec<_> = legal_moves.iter().filter(|m| m.is_capture()).collect();
-
-    captures.sort_by(|a, b| {
-        let a_value = piece_value(a.capture().unwrap());
-        let b_value = piece_value(b.capture().unwrap());
-        b_value.cmp(&a_value)
-    });
-
-    for capture in captures {
-        let mut new_position = position.clone();
-        new_position.play_unchecked(capture);
-        let score = -qsearch(&new_position, -beta, -alpha);
-        if score >= beta {
-            return beta;
-        }
-        if score > alpha {
-            alpha = score;
-        }
-    }
-
-    alpha
-}
-
-fn naive_eval(pos: &Chess) -> i32 {
-    pos.legal_moves()
-        .iter()
-        .map(|mv| {
-            let mut new_position = pos.clone();
-            new_position.play_unchecked(mv);
-            -qsearch(&new_position, i32::MIN, i32::MAX)
-        })
-        .max()
-        .unwrap_or(i32::MIN)
-}
-
-#[cfg(test)]
-mod tests {
-    use shakmaty::FromSetup;
-
-    use super::*;
-
-    fn pos(fen: &str) -> Chess {
-        let fen: Fen = fen.parse().unwrap();
-        Chess::from_setup(fen.into_setup(), CastlingMode::Chess960).unwrap()
-    }
-
-    #[test]
-    fn eval_start_pos() {
-        assert_eq!(naive_eval(&Chess::default()), 0);
-    }
-
-    #[test]
-    fn eval_scandi() {
-        let position = pos("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
-        assert_eq!(naive_eval(&position), 0);
-    }
-
-    #[test]
-    fn eval_hanging_pawn() {
-        let position = pos("r1bqkbnr/ppp1pppp/2n5/1B1p4/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3");
-        assert_eq!(naive_eval(&position), 100);
-    }
-
-    #[test]
-    fn eval_complex_center() {
-        let position = pos("r1bqkbnr/ppp2ppp/2n5/1B1pp3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4");
-        assert_eq!(naive_eval(&position), 100);
-    }
-
-    #[test]
-    fn eval_in_check() {
-        let position = pos("r1bqkbnr/ppp2ppp/2B5/3pp3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4");
-        assert_eq!(naive_eval(&position), -100);
-    }
-
-    #[test]
-    fn eval_rook_stack() {
-        let position = pos("rnrq4/8/8/1R6/1R6/1R5K/1Q6/7k w - - 0 1");
-        assert_eq!(naive_eval(&position), 500);
-    }
-
-    #[test]
-    fn eval_rook_stack2() {
-        let position = pos("rnrq4/8/8/1R6/1Q6/1R5K/1R6/7k w - - 0 1");
-        assert_eq!(naive_eval(&position), 200);
-    }
-
-    #[test]
-    fn eval_opera_game1() {
-        let position = pos("4kb1r/p2rqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2K4R w k - 0 14");
-        assert_eq!(naive_eval(&position), -100);
-    }
-
-    #[test]
-    fn eval_opera_game2() {
-        let position = pos("4kb1r/p2rqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2KR4 b k - 1 14");
-        assert_eq!(naive_eval(&position), 0);
-    }
-}
-
 #[derive(Type, Default, Serialize, Debug)]
 pub struct EngineConfig {
     pub name: String,
@@ -889,28 +929,62 @@ pub struct EngineConfig {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_engine_config(path: PathBuf) -> Result<EngineConfig, Error> {
+    info!(
+        "get_engine_config: starting probe for path={}",
+        path.display()
+    );
     let mut child = start_engine(path)?;
+    let stderr = child.stderr.take();
     let (mut stdin, mut stdout) = get_handles(&mut child)?;
 
-    send_command(&mut stdin, "uci\n").await;
+    if let Some(stderr) = stderr {
+        tokio::spawn(async move {
+            let mut stderr_lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = stderr_lines.next_line().await {
+                info!("get_engine_config stderr: {}", line);
+            }
+        });
+    }
+
+    let init_command = "uci\n";
+    info!("get_engine_config gui -> engine: {}", init_command.trim_end());
+    send_command(&mut stdin, init_command).await;
 
     let mut config = EngineConfig::default();
+    let probe_deadline = Duration::from_secs(5);
 
     loop {
-        if let Some(line) = stdout.next_line().await? {
-            if let UciMessage::Id {
-                name: Some(name),
-                author: _,
-            } = parse_one(&line)
-            {
-                config.name = name;
+        let next_line = tokio::time::timeout(probe_deadline, stdout.next_line()).await;
+        let line = match next_line {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => {
+                let status = child.wait().await?;
+                return Err(Error::EngineProbeFailed(format!(
+                    "engine exited before completing UCI handshake (status: {})",
+                    status
+                )));
             }
-            if let UciMessage::Option(opt) = parse_one(&line) {
-                config.options.push(opt);
+            Ok(Err(err)) => return Err(err.into()),
+            Err(_) => {
+                return Err(Error::EngineProbeFailed(
+                    "timed out waiting for engine handshake response".to_string(),
+                ));
             }
-            if let UciMessage::UciOk = parse_one(&line) {
-                break;
-            }
+        };
+
+        info!("get_engine_config engine -> gui: {}", line);
+        if let UciMessage::Id {
+            name: Some(name),
+            author: _,
+        } = parse_one(&line)
+        {
+            config.name = name;
+        }
+        if let UciMessage::Option(opt) = parse_one(&line) {
+            config.options.push(opt);
+        }
+        if let UciMessage::UciOk = parse_one(&line) {
+            break;
         }
     }
     println!("{:?}", config);

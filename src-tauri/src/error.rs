@@ -86,6 +86,12 @@ pub enum Error {
 
     #[error("Players aren't the same. They have played against each other")]
     NotDistinctPlayers,
+
+    #[error("Unsupported engine protocol: {0}")]
+    UnsupportedEngineProtocol(String),
+
+    #[error("Engine probe failed: {0}")]
+    EngineProbeFailed(String),
 }
 
 impl serde::Serialize for Error {

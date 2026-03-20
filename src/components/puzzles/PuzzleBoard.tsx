@@ -1,7 +1,7 @@
 import { Chessground } from "@/chessground/Chessground";
 import { jumpToNextPuzzleAtom, showCoordinatesAtom } from "@/state/atoms";
 import { chessboard } from "@/styles/Chessboard.css";
-import { positionFromFen } from "@/utils/chessops";
+import { positionFromFen, toChessopsFen } from "@/utils/chessops";
 import type { Completion, Puzzle } from "@/utils/puzzles";
 import { getNodeAtPath, treeIteratorMainLine } from "@/utils/treeReducer";
 import { Box } from "@mantine/core";
@@ -66,7 +66,8 @@ function PuzzleBoard({
     }
   }
   const orientation = puzzle?.fen
-    ? Chess.fromSetup(parseFen(puzzle.fen).unwrap()).unwrap().turn === "white"
+    ? Chess.fromSetup(parseFen(toChessopsFen(puzzle.fen)).unwrap()).unwrap()
+        .turn === "white"
       ? "black"
       : "white"
     : "white";

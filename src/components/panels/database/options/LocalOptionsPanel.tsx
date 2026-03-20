@@ -2,6 +2,7 @@ import { Chessground } from "@/chessground/Chessground";
 import PiecesGrid from "@/components/boards/PiecesGrid";
 import { PlayerSearchInput } from "@/components/databases/PlayerSearchInput";
 import { currentLocalOptionsAtom } from "@/state/atoms";
+import { normalizeFen, toChessopsFen } from "@/utils/chessops";
 import {
   Box,
   Button,
@@ -22,11 +23,11 @@ function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
   const [options, setOptions] = useAtom(currentLocalOptionsAtom);
 
   const setSimilarStructure = async (fen: string) => {
-    const setup = parseFen(fen).unwrap();
+    const setup = parseFen(toChessopsFen(fen)).unwrap();
     for (const square of setup.board.pawn.complement()) {
       setup.board.take(square);
     }
-    const fenResult = makeFen(setup);
+    const fenResult = normalizeFen(makeFen(setup));
     setOptions((q) => ({ ...q, type: "partial", fen: fenResult }));
   };
 
@@ -123,10 +124,13 @@ function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
                 color: "both",
                 events: {
                   after: (orig, dest) => {
-                    const setup = parseFen(options.fen).unwrap();
+                    const setup = parseFen(toChessopsFen(options.fen)).unwrap();
                     const p = setup.board.take(parseSquare(orig)!)!;
                     setup.board.set(parseSquare(dest)!, p);
-                    setOptions((q) => ({ ...q, fen: makeFen(setup) }));
+                    setOptions((q) => ({
+                      ...q,
+                      fen: normalizeFen(makeFen(setup)),
+                    }));
                   },
                 },
               }}
@@ -156,7 +160,7 @@ function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
                 setOptions((q) => ({
                   ...q,
                   type: "partial",
-                  fen: EMPTY_BOARD_FEN,
+                  fen: normalizeFen(EMPTY_BOARD_FEN),
                 }));
               }}
             >

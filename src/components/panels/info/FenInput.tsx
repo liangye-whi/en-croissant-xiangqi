@@ -1,7 +1,12 @@
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import { swapMove } from "@/utils/chessops";
+import {
+  normalizeFen,
+  NORMALIZED_INITIAL_FEN,
+  swapMove,
+  toChessopsFen,
+} from "@/utils/chessops";
 import { Button, Group, Select, Stack, Text } from "@mantine/core";
-import { EMPTY_FEN, INITIAL_FEN, makeFen, parseFen } from "xiangqiops/fen";
+import { EMPTY_FEN, makeFen, parseFen } from "xiangqiops/fen";
 import { memo, useContext, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -13,7 +18,7 @@ function FenInput({ currentFen }: { currentFen: string }) {
 
   const [setup, error] = useMemo(
     () =>
-      parseFen(currentFen).unwrap(
+      parseFen(toChessopsFen(currentFen)).unwrap(
         (v) => [v, null],
         (e) => [null, e],
       ),
@@ -25,7 +30,7 @@ function FenInput({ currentFen }: { currentFen: string }) {
   }
 
   useEffect(() => {
-    setFen(makeFen({ ...setup }));
+    setFen(normalizeFen(makeFen({ ...setup })));
   }, [setup, setFen]);
 
   const { t } = useTranslation();
@@ -36,10 +41,10 @@ function FenInput({ currentFen }: { currentFen: string }) {
         <Text fw="bold">Position FEN</Text>
         <FenSearch currentFen={currentFen} />
         <Group>
-          <Button variant="default" onClick={() => setFen(INITIAL_FEN)}>
+          <Button variant="default" onClick={() => setFen(NORMALIZED_INITIAL_FEN)}>
             {t("Fen.Start")}
           </Button>
-          <Button variant="default" onClick={() => setFen(EMPTY_FEN)}>
+          <Button variant="default" onClick={() => setFen(normalizeFen(EMPTY_FEN))}>
             {t("Fen.Empty")}
           </Button>
           <Select

@@ -7,7 +7,13 @@ import {
   enginesAtom,
   tabEngineSettingsFamily,
 } from "@/state/atoms";
-import { chessopsError, positionFromFen, swapMove } from "@/utils/chessops";
+import {
+  chessopsError,
+  normalizeFen,
+  NORMALIZED_INITIAL_FEN,
+  positionFromFen,
+  swapMove,
+} from "@/utils/chessops";
 import type { Engine } from "@/utils/engines";
 import { formatNodes } from "@/utils/format";
 import { formatScore } from "@/utils/score";
@@ -35,7 +41,7 @@ import {
   IconTargetArrow,
 } from "@tabler/icons-react";
 import { parseUci } from "xiangqiops";
-import { INITIAL_FEN, makeFen } from "xiangqiops/fen";
+import { makeFen } from "xiangqiops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo } from "react";
@@ -135,17 +141,20 @@ function BestMovesComponent({
   }
 
   const isGameOver = pos?.isEnd() ?? false;
-  const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : null), [pos]);
+  const finalFen = useMemo(
+    () => (pos ? normalizeFen(makeFen(pos.toSetup())) : null),
+    [pos],
+  );
 
   const { searchingFen, searchingMoves } = useMemo(
     () =>
       match(threat)
         .with(true, () => ({
-          searchingFen: swapMove(finalFen || INITIAL_FEN),
+          searchingFen: swapMove(finalFen || NORMALIZED_INITIAL_FEN),
           searchingMoves: [],
         }))
         .with(false, () => ({
-          searchingFen: fen,
+          searchingFen: normalizeFen(fen),
           searchingMoves: moves,
         }))
         .exhaustive(),
